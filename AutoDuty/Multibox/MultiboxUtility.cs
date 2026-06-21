@@ -1,6 +1,7 @@
 namespace AutoDuty.Multibox;
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -134,9 +135,9 @@ public static class MultiboxUtility
     internal static class Server
     {
         public const             int             MAX_SERVERS   = 3;
-        private static readonly  StreamString?[] streams       = new StreamString?[MAX_SERVERS];
-        internal static readonly ClientInfo?[]   clients       = new ClientInfo?[MAX_SERVERS];
-        private static readonly  Queue<string>[] messageQueues = [new(), new(), new()];
+        private static readonly  StreamString?[]           streams       = new StreamString?[MAX_SERVERS];
+        internal static readonly ClientInfo?[]             clients       = new ClientInfo?[MAX_SERVERS];
+        private static readonly  ConcurrentQueue<string>[] messageQueues = [new(), new(), new()];
 
         internal static readonly DateTime[] keepAlives    = new DateTime[MAX_SERVERS];
         internal static readonly bool[]     stepConfirms  = new bool[MAX_SERVERS];
@@ -321,7 +322,12 @@ public static class MultiboxUtility
                             DebugLog($"Client {index} closed the connection.");
                             return;
                         case CLIENT_CID_KEY:
-                            clients[index] = new ClientInfo(ulong.Parse(split[1]), split[2], ushort.Parse(split[3]));
+                            if (split.Length < 4 || !ulong.TryParse(split[1], out ulong clientCid) || !ushort.TryParse(split[3], out ushort clientWorldId))
+                            {
+                                ErrorLog($"Malformed {CLIENT_CID_KEY} from {index}: '{message}'");
+                                break;
+                            }
+                            clients[index] = new ClientInfo(clientCid, split[2], clientWorldId);
 
                             _ = Svc.Framework.RunOnTick(() =>
                                                         {
@@ -389,11 +395,10 @@ public static class MultiboxUtility
 
                 while (!ct.IsCancellationRequested && streams[index] != null)
                 {
-                    if (messageQueues[index].Count > 0)
+                    if (messageQueues[index].TryDequeue(out string? message))
                     {
-                        string message = messageQueues[index].Dequeue();
                         streams[index]?.WriteString(message);
-                    } 
+                    }
                     else if ((DateTime.Now - keepAlives[index]).TotalSeconds > 15)
                     {
                         // if no messages to send and the connection is stale, send a keepalive to check. (Usually this is the clients job but the tcp socket doesn't die immediately)
@@ -424,9 +429,19 @@ public static class MultiboxUtility
             return true;
         }
 
+        // 接続中(streams[i] != null)のスロットだけが対象。空き/切断スロットは待たない
+        // (旧実装は MAX_SERVERS 全スロットの確認を要求し、4人未満や切断時に無限待機していた)。
+        private static bool AllConnectedConfirmed(bool[] confirms)
+        {
+            for (int i = 0; i < MAX_SERVERS; i++)
+                if (streams[i] != null && !confirms[i])
+                    return false;
+            return true;
+        }
+
         public static void CheckDeaths()
         {
-            if (deathConfirms.All(x => x) && Player.IsDead)
+            if (AllConnectedConfirmed(deathConfirms) && Player.IsDead)
             {
                 for (int i = 0; i < deathConfirms.Length; i++)
                     deathConfirms[i] = false;
@@ -442,17 +457,19 @@ public static class MultiboxUtility
 
         public static void CheckStepProgress()
         {
-            if((Plugin.Stage != Stage.Looping && Plugin.indexer >= 0 && Plugin.indexer < Plugin.Actions.Count && Plugin.Actions[Plugin.indexer].Tag == ActionTag.Treasure || stepConfirms.All(x => x)) && stepBlock)
+            bool treasureSkip = Plugin.Stage != Stage.Looping && Plugin.indexer >= 0 && Plugin.indexer < Plugin.Actions.Count && Plugin.Actions[Plugin.indexer].Tag == ActionTag.Treasure;
+
+            if ((treasureSkip || AllConnectedConfirmed(stepConfirms)) && stepBlock)
             {
                 for (int i = 0; i < stepConfirms.Length; i++)
                     stepConfirms[i] = false;
 
-                DebugLog("All clients completed the step");
+                DebugLog("All connected clients completed the step");
                 stepBlock = false;
             }
             else
             {
-                DebugLog("Not all clients have completed the step yet, waiting for more confirmations.");
+                DebugLog("Not all connected clients have completed the step yet, waiting for more confirmations.");
             }
         }
 
@@ -485,7 +502,7 @@ public static class MultiboxUtility
         private static void SendToAllClients(string message)
         {
             DebugLog("Enqueuing to send: " + message);
-            foreach (Queue<string> queue in messageQueues)
+            foreach (ConcurrentQueue<string> queue in messageQueues)
                 queue.Enqueue(message);
         }
 
@@ -560,12 +577,16 @@ public static class MultiboxUtility
                                 DebugLog("Server closed the connection.");
                                 return;
                             case STEP_START:
-                                if (int.TryParse(split[1], out int step))
+                                if (split.Length >= 2 && int.TryParse(split[1], out int step))
                                 {
                                     Plugin.indexer = step;
                                     stepBlock      = false;
                                     Plugin.Stage   = Stage.Idle;
                                     Plugin.Stage   = Stage.Reading_Path;
+                                }
+                                else
+                                {
+                                    ErrorLog($"Malformed {STEP_START}: '{message}'");
                                 }
                                 break;
                             case KEEPALIVE_KEY:
@@ -612,11 +633,23 @@ public static class MultiboxUtility
                                                                                                     }, 500, false);
                                 break;
                             case PATH_STEPS:
-                                List<PathAction>? steps = JsonConvert.DeserializeObject<List<PathAction>>(message[(split[0].Length+1)..], ConfigurationMain.JsonSerializerSettings);
-                                if (steps is { Count: > 0 })
+                                if (split.Length < 2)
                                 {
-                                    DebugLog("setting steps from host");
-                                    Plugin.Actions = steps;
+                                    ErrorLog($"Malformed {PATH_STEPS}: payload missing");
+                                    break;
+                                }
+                                try
+                                {
+                                    List<PathAction>? steps = JsonConvert.DeserializeObject<List<PathAction>>(message[(split[0].Length + 1)..], ConfigurationMain.JsonSerializerSettings);
+                                    if (steps is { Count: > 0 })
+                                    {
+                                        DebugLog("setting steps from host");
+                                        Plugin.Actions = steps;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    ErrorLog($"Failed to parse {PATH_STEPS}: {ex.Message}");
                                 }
                                 break;
                             default:
