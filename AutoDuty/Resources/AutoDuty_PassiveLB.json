@@ -1,0 +1,123 @@
+{
+  "Name": "AutoDuty Passive LB",
+  "Modules": {
+    "BossMod.Autorotation.MiscAI.AutoTarget": [
+      {
+        "Track": "Retarget",
+        "Option": "Always"
+      }
+    ],
+    "BossMod.Autorotation.xan.MeleeAI": [
+      {
+        "Track": "Limit Break",
+        "Option": "Enabled"
+      }
+    ],
+    "BossMod.Autorotation.xan.RangedAI": [
+      {
+        "Track": "Limit Break",
+        "Option": "Enabled"
+      }
+    ],
+    "BossMod.Autorotation.ClassRPRUtility": [
+      {
+        "Track": "LB",
+        "Option": "LB1"
+      }
+    ],
+    "BossMod.Autorotation.ClassVPRUtility": [
+      {
+        "Track": "LB",
+        "Option": "LB1"
+      }
+    ],
+    "BossMod.Autorotation.ClassDRGUtility": [
+      {
+        "Track": "LB",
+        "Option": "LB1"
+      }
+    ],
+    "BossMod.Autorotation.ClassMNKUtility": [
+      {
+        "Track": "LB",
+        "Option": "LB1"
+      }
+    ],
+    "BossMod.Autorotation.ClassNINUtility": [
+      {
+        "Track": "LB",
+        "Option": "LB1"
+      }
+    ],
+    "BossMod.Autorotation.ClassSAMUtility": [
+      {
+        "Track": "LB",
+        "Option": "LB1"
+      }
+    ],
+    "BossMod.Autorotation.MiscAI.StayCloseToTarget": [],
+    "BossMod.Autorotation.MiscAI.GoToPositional": [],
+    "BossMod.Autorotation.MiscAI.StayCloseToPartyRole": [
+      {
+        "Track": "range",
+        "Option": "20"
+      }
+    ],
+    "BossMod.Autorotation.xan.TankAI": [
+      {
+        "Track": "Ranged GCD",
+        "Option": "Disabled"
+      },
+      {
+        "Track": "Low Blow",
+        "Option": "Disabled"
+      },
+      {
+        "Track": "Arms\u0027 Length",
+        "Option": "Disabled"
+      },
+      {
+        "Track": "Personal mits",
+        "Option": "Disabled"
+      },
+      {
+        "Track": "Invuln",
+        "Option": "Disabled"
+      },
+      {
+        "Track": "Protect party members",
+        "Option": "Disabled"
+      }
+    ],
+    "BossMod.Autorotation.ClassBLMUtility": [
+      {
+        "Track": "LB",
+        "Option": "LB1"
+      }
+    ],
+    "BossMod.Autorotation.ClassSMNUtility": [
+      {
+        "Track": "LB",
+        "Option": "LB1"
+      }
+    ],
+    "BossMod.Autorotation.ClassRDMUtility": [
+      {
+        "Track": "LB",
+        "Option": "LB1"
+      }
+    ],
+    "BossMod.Autorotation.ClassPCTUtility": [
+      {
+        "Track": "LB",
+        "Option": "LB1"
+      }
+    ],
+    "BossMod.Autorotation.MiscAI.NormalMovement": [
+      {
+        "Track": "Destination",
+        "Option": "Pathfind"
+      }
+    ]
+  }
+}

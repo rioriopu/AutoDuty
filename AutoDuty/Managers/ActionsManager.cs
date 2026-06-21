@@ -239,8 +239,14 @@ namespace AutoDuty.Managers
             }
         }
 
-        public void BossMod(PathAction action) => 
-            BossMod_IPCSubscriber.SetMovement(action.Arguments[0].Equals("on", StringComparison.InvariantCultureIgnoreCase));
+        //public void BossMod(PathAction action) => 
+        //    BossMod_IPCSubscriber.SetMovement(action.Arguments[0].Equals("on", StringComparison.InvariantCultureIgnoreCase));
+        public void BossMod(PathAction action)
+        {
+            bool on = action.Arguments.Count > 0 && action.Arguments[0].Equals("on", StringComparison.InvariantCultureIgnoreCase);
+            BossMod_IPCSubscriber.SetEnabled(on);
+            BossMod_IPCSubscriber.SetMovement(on);
+        }
 
         public void ModifyIndex(PathAction action)
         {

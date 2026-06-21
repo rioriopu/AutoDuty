@@ -698,33 +698,46 @@ public static class MultiboxUtility
 
         public string ReadString()
         {
-            int b1 = ioStream.ReadByte();
-            int b2 = ioStream.ReadByte();
-
-            if (b1 == -1 || b2 == -1)
+            try
             {
-                DebugLog("End of stream reached.");
-                return string.Empty;
-            }
+                int b1 = ioStream.ReadByte();
+                int b2 = ioStream.ReadByte();
 
-            int    len      = b1 * 256 + b2;
-            byte[] inBuffer = new byte[len];
-            int    n        = 0;
-            while (n < len)
-            {
-                int c = ioStream.Read(inBuffer, n, len-n);
-                if (c == 0)
+                if (b1 == -1 || b2 == -1)
                 {
-                    ErrorLog("Stream closed unexpectedly");
+                    DebugLog("End of stream reached.");
                     return string.Empty;
                 }
-                n += c;
+
+                int    len      = b1 * 256 + b2;
+                byte[] inBuffer = new byte[len];
+                int    n        = 0;
+                while (n < len)
+                {
+                    int c = ioStream.Read(inBuffer, n, len-n);
+                    if (c == 0)
+                    {
+                        ErrorLog("Stream closed unexpectedly");
+                        return string.Empty;
+                    }
+                    n += c;
+                }
+
+                string readString = this.streamEncoding.GetString(inBuffer);
+
+                DebugLog("Reading: " + readString);
+                return readString;
             }
-
-            string readString = this.streamEncoding.GetString(inBuffer);
-
-            DebugLog("Reading: " + readString);
-            return readString;
+            catch (IOException)
+            {
+                DebugLog("Pipe closed, returning empty string.");
+                return string.Empty;
+            }
+            catch (ObjectDisposedException)
+            {
+                DebugLog("Stream disposed, returning empty string.");
+                return string.Empty;
+            }
         }
 
         public int WriteString(string outString)

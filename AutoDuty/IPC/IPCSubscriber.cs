@@ -60,6 +60,28 @@ namespace AutoDuty.IPC
     {
         internal static bool IsEnabled => IPCSubscriber_Common.IsReady("BossMod") || IPCSubscriber_Common.IsReady("BossModReborn");
 
+        public static void SetEnabled(bool on)		//start
+        {
+            if (!IsEnabled)
+                return;
+
+            if (IPCSubscriber_Common.IsReady("BossModReborn"))
+            {
+                ////ECommons.Automation.Chat.ExecuteCommand(on ? "/bmrai on" : "/bmrai off");
+                ECommons.Automation.Chat.ExecuteCommand("/bmrai off");
+                if (!on)
+                {
+                    ECommons.Automation.Chat.ExecuteCommand("/bmrai setpresetname clear");
+                    ECommons.Automation.Chat.ExecuteCommand("/bmr ar set clear");
+                }
+            }
+            else
+            {
+                //ECommons.Automation.Chat.ExecuteCommand(on ? "/vbmai on" : "/vbmai off");
+                ECommons.Automation.Chat.ExecuteCommand(on ? "/vbm ai enabled on" : "/vbm ai enabled off");
+            }
+        }						//end
+
         public static bool HasModuleByDataId(uint id) => BossMod.HasModuleByDataId(id);
         public static void DisableModule(string moduleName, bool disable)
         {
@@ -72,12 +94,24 @@ namespace AutoDuty.IPC
 
         public static void AddPreset(string name, string preset)
         {
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(preset))	//start
+            {
+                Svc.Log.Warning($"BossMod preset '{name}' was not updated because the preset payload was empty.");
+                return;
+            }										//end
+
             if (BossMod.Presets_Get(name) == null)
                 Svc.Log.Debug($"BossMod Adding Preset: {name} {BossMod.Presets_Create(preset, true)}");
         }
 
         public static void RefreshPreset(string name, string preset)
         {
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(preset))	//start
+            {
+                Svc.Log.Warning($"BossMod preset '{name}' was not refreshed because the preset payload was empty.");
+                return;
+            }										//end
+
             if (BossMod.Presets_Get(name) != null)
                 BossMod.Presets_Delete(name);
             AddPreset(name, preset);
@@ -112,6 +146,7 @@ namespace AutoDuty.IPC
 
                 BossMod.Presets_AddTransientStrategy("AutoDuty",         "BossMod.Autorotation.MiscAI.StayCloseToTarget", "range", MathF.Round(range, 1).ToString(CultureInfo.InvariantCulture));
                 BossMod.Presets_AddTransientStrategy("AutoDuty Passive", "BossMod.Autorotation.MiscAI.StayCloseToTarget", "range", MathF.Round(range, 1).ToString(CultureInfo.InvariantCulture));
+                BossMod.Presets_AddTransientStrategy("AutoDuty Passive LB", "BossMod.Autorotation.MiscAI.StayCloseToTarget", "range", MathF.Round(range, 1).ToString(CultureInfo.InvariantCulture));
             }
         }
 
@@ -127,6 +162,7 @@ namespace AutoDuty.IPC
 
                 BossMod.Presets_AddTransientStrategy("AutoDuty",         "BossMod.Autorotation.MiscAI.NormalMovement", "Destination", destinationStrategy);
                 BossMod.Presets_AddTransientStrategy("AutoDuty Passive", "BossMod.Autorotation.MiscAI.NormalMovement", "Destination", destinationStrategy);
+                BossMod.Presets_AddTransientStrategy("AutoDuty Passive LB", "BossMod.Autorotation.MiscAI.NormalMovement", "Destination", destinationStrategy);
             }
         }
 
@@ -137,6 +173,7 @@ namespace AutoDuty.IPC
                 Svc.Log.Debug($"BossMod Setting Positional: {positional}");
 
                 BossMod.Presets_AddTransientStrategy("AutoDuty Passive", "BossMod.Autorotation.MiscAI.GoToPositional", "Positional", positional.ToString());
+                BossMod.Presets_AddTransientStrategy("AutoDuty Passive LB", "BossMod.Autorotation.MiscAI.GoToPositional", "Positional", positional.ToString());
             }
         }
 
@@ -148,6 +185,7 @@ namespace AutoDuty.IPC
 
                 BossMod.Presets_AddTransientStrategy("AutoDuty",         "BossMod.Autorotation.MiscAI.StayCloseToPartyRole", "Role", role);
                 BossMod.Presets_AddTransientStrategy("AutoDuty Passive", "BossMod.Autorotation.MiscAI.StayCloseToPartyRole", "Role", role);
+                BossMod.Presets_AddTransientStrategy("AutoDuty Passive LB", "BossMod.Autorotation.MiscAI.StayCloseToPartyRole", "Role", role);
             }
         }
     }
@@ -219,9 +257,110 @@ namespace AutoDuty.IPC
     public static class Wrath_IPCSubscriber
     {
         private static Guid? _curLease;
+        private static int? _savedDpsAoeTargets;			//start
+
+        internal static void SetDpsAoeTargetsDefault()
+        {
+            int restore = Math.Clamp(Configuration.Wrath_DpsAoeTargetsDefault, 1, 10);
+
+            if (!TrySetDpsAoeTargetsViaIpc(restore))
+                TryExecuteWrathDpsAoeTargetsCommand(restore);
+        }
+
+        private static void RestoreDpsAoeTargetsDefaultIfNeeded()
+        {
+            if (!_savedDpsAoeTargets.HasValue)
+                return;
+            try
+            {
+                SetDpsAoeTargetsDefault();
+            }
+            finally
+            {
+                _savedDpsAoeTargets = null;
+            }
+        }
+
+        private static bool TryGetDpsAoeTargetsViaIpc(out int value)
+        {
+            value = default;
+            try
+            {
+                Type enumType = typeof(AutoRotationConfigOption);
+                string[] names = ["DPSAoETargets", "DpsAoeTargets", "DPSAoeTargets", "DpsAoETargets"]; // support multiple Wrath versions
+
+                foreach (string name in names)
+                {
+                    if (!Enum.TryParse(enumType, name, out object? enumValue) || enumValue is null)
+                        continue;
+
+                    object? raw = WrathIPCWrapper.GetAutoRotationConfigState((AutoRotationConfigOption)enumValue);
+                    if (raw is int i)
+                    {
+                        value = i;
+                        return true;
+                    }
+
+                    // Some versions may return boxed long/uint/etc.
+                    try
+                    {
+                        value = Convert.ToInt32(raw, CultureInfo.InvariantCulture);
+                        return true;
+                    }
+                    catch
+                    {
+                        // ignore and continue
+                    }
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+            return false;
+        }
+
+        private static bool TrySetDpsAoeTargetsViaIpc(int aoeTargets)
+        {
+            try
+            {
+                Type enumType = typeof(AutoRotationConfigOption);
+                string[] names = ["DPSAoETargets", "DpsAoeTargets", "DPSAoeTargets", "DpsAoETargets"]; // support multiple Wrath versions
+
+                foreach (string name in names)
+                {
+                    if (!Enum.TryParse(enumType, name, out object? enumValue) || enumValue is null)
+                        continue;
+
+                    if (!_curLease.HasValue)
+                        return false;
+
+                    SetResult r = WrathIPCWrapper.SetAutoRotationConfigState(_curLease.Value, (AutoRotationConfigOption)enumValue, aoeTargets);
+                    return r.CheckResult();
+                }
+            }
+            catch
+            {
+                // ignored - fall back to chat
+            }
+
+            return false;
+        }
+
+        private static void TryExecuteWrathDpsAoeTargetsCommand(int aoeTargets)
+        {
+            try
+            {
+                ECommons.Automation.Chat.ExecuteCommand($"/wrath auto dpsaoetargets {aoeTargets}");
+            }
+            catch
+            {
+                // ignore
+            }
+        }											//end
 
         internal static bool IsEnabled => IPCSubscriber_Common.IsReady("WrathCombo");
-        
+
         /// <summary>
         ///     Checks if the current job has a Single and Multi-Target combo configured
         ///     that are enabled in Auto-Mode.
@@ -229,7 +368,22 @@ namespace AutoDuty.IPC
         /// <returns>
         ///     If the user's current job is fully ready for Auto-Rotation.
         /// </returns>
-        internal static bool IsCurrentJobAutoRotationReady => WrathIPCWrapper.IsCurrentJobAutoRotationReady();
+        //internal static bool IsCurrentJobAutoRotationReady => WrathIPCWrapper.IsCurrentJobAutoRotationReady();
+        internal static bool IsCurrentJobAutoRotationReady
+        {
+            get
+            {
+                try
+                {
+                    return WrathIPCWrapper.IsCurrentJobAutoRotationReady();
+                }
+                catch (Exception ex)
+                {
+                    Svc.Log.Warning($"Wrath auto-rotation readiness check failed: {ex.InnerException?.Message ?? ex.Message}");
+                    return false;
+                }
+            }
+        }
 
 
         private static bool DoThing(Func<SetResult> action)
@@ -268,8 +422,20 @@ namespace AutoDuty.IPC
             }
         }
 
-        internal static bool SetJobAutoReady() => 
-            Register() && DoThing(() => WrathIPCWrapper.SetCurrentJobAutoRotationReady(_curLease!.Value));
+        //internal static bool SetJobAutoReady() => 
+        //    Register() && DoThing(() => WrathIPCWrapper.SetCurrentJobAutoRotationReady(_curLease!.Value));
+        internal static bool SetJobAutoReady()
+        {
+            try
+            {
+                return Register() && DoThing(() => WrathIPCWrapper.SetCurrentJobAutoRotationReady(_curLease!.Value));
+            }
+            catch (Exception ex)
+            {
+                Svc.Log.Warning($"Wrath set-job-auto-ready failed: {ex.InnerException?.Message ?? ex.Message}");
+                return false;
+            }
+        }
 
         internal static void SetAutoMode(bool on)
         {
@@ -278,6 +444,16 @@ namespace AutoDuty.IPC
                 bool autoRotationState = DoThing(() => WrathIPCWrapper.SetAutoRotationState(_curLease!.Value, on));
                 if (autoRotationState && on)
                 {
+                    if (TryGetDpsAoeTargetsViaIpc(out int curDefault))			//start
+                    {
+                        curDefault = Math.Clamp(curDefault, 1, 10);
+                        if (Configuration.Wrath_DpsAoeTargetsDefault != curDefault)
+                        {
+                            Configuration.Wrath_DpsAoeTargetsDefault = curDefault;
+                            Windows.Configuration.Save();
+                        }
+                    }									//end
+
                     WrathIPCWrapper.SetAutoRotationConfigState(_curLease.Value, AutoRotationConfigOption.InCombatOnly,       false);
                     WrathIPCWrapper.SetAutoRotationConfigState(_curLease.Value, AutoRotationConfigOption.AutoRez,            true);
                     WrathIPCWrapper.SetAutoRotationConfigState(_curLease.Value, AutoRotationConfigOption.AutoRezDPSJobs,     true);
@@ -295,9 +471,32 @@ namespace AutoDuty.IPC
                     WrathIPCWrapper.SetAutoRotationConfigState(_curLease.Value, AutoRotationConfigOption.UnTargetAndDisableForPenalty, true);
                     WrathIPCWrapper.SetAutoRotationConfigState(_curLease.Value, AutoRotationConfigOption.IgnoreRangeInBoss,            true);
                     WrathIPCWrapper.SetVariantReadyForJob(_curLease.Value, (uint) (Plugin.currentPlayerItemLevelAndClassJob.Value ?? Plugin.jobLastKnown), true);
+
+                    ECommons.ExcelServices.Job curJob = PlayerHelper.GetJob();	//start
+                    int aoeTargets = Configuration.Wrath_DpsAoeTargetsByJob.GetValueOrDefault(curJob, Configuration.Wrath_DpsAoeTargetsDefault);
+                    aoeTargets = Math.Clamp(aoeTargets, 1, 10);
+                    ECommons.Automation.Chat.ExecuteCommand($"/wrath auto dpsaoetargets {aoeTargets}");	//end
+
+                    if (!_savedDpsAoeTargets.HasValue && TryGetDpsAoeTargetsViaIpc(out int cur))	//
+                        _savedDpsAoeTargets = cur;							//
+
+                    if (!TrySetDpsAoeTargetsViaIpc(aoeTargets)) //
+                        //ECommons.Automation.Chat.ExecuteCommand($"/wrath auto dpsaoetargets {aoeTargets}"); //
+                        TryExecuteWrathDpsAoeTargetsCommand(aoeTargets); //
+                }
+                else if (autoRotationState && !on)					//start
+                {
+                    if (_savedDpsAoeTargets.HasValue)
+                    {
+                        int restore = Math.Clamp(_savedDpsAoeTargets.Value, 1, 10);
+                        if (!TrySetDpsAoeTargetsViaIpc(restore))
+                            //ECommons.Automation.Chat.ExecuteCommand($"/wrath auto dpsaoetargets {restore}");
+                            TryExecuteWrathDpsAoeTargetsCommand(restore);
+                    }
+                    _savedDpsAoeTargets = null;						//end
                 }
             }
-        }
+        }	//
 
         private static bool Register()
         {
@@ -332,15 +531,36 @@ namespace AutoDuty.IPC
             }
 
             _curLease = null;
-            Svc.Log.Info($"Wrath lease cancelled via {(CancellationReason) reason} for: {s}");
+            _savedDpsAoeTargets = null;	//
+            Svc.Log.Info($"Wrath lease cancelled via {(CancellationReason)reason} for: {s}"); //
         }
 
         internal static void Release()
         {
-            if (_curLease.HasValue)
+            if (!_curLease.HasValue)
+                return;
+
+            // WrathCombo can be present but its IPC gates not registered yet (during startup/shutdown).
+            if (!IsEnabled)
+            {
+                _curLease = null;
+                _savedDpsAoeTargets = null;	//
+                return;
+            }
+
+            try
             {
                 WrathIPCWrapper.ReleaseControl(_curLease.Value);
+            }
+            catch (Exception ex)
+            {
+                // Avoid crashing WindowSystem.Draw() / StopAndResetAll() if WrathCombo IPC isn't ready.
+                Svc.Log.Debug($"Wrath IPC ReleaseControl failed (ignoring): {ex.Message}");
+            }
+            finally
+            {
                 _curLease = null;
+                //_savedDpsAoeTargets = null;	//
             }
         }
     }
@@ -370,6 +590,7 @@ namespace AutoDuty.IPC
         }
 
         public static void RotationStop() => RotationSolverReborn.ChangeOperatingMode(RotationSolverRebornIPC.StateCommandType.Off);
+        public static void RotationManual() => RotationSolverReborn.ChangeOperatingMode(RotationSolverRebornIPC.StateCommandType.Manual);//追加
     }
 
     public static class Skippy_IPCSubscriber

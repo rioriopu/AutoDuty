@@ -211,7 +211,13 @@ public class ConfigurationMain
         this.SetProfile(CONFIGNAME_BARE);
         Svc.Framework.RunOnTick(() =>
         {
-            DebugLog($"Setting to default profile for {Player.Name} ({Player.CID}) {PlayerHelper.IsValid}");
+            bool playerAvailable = Player.Available;		//start
+            ulong playerCid = playerAvailable ? Player.CID : 0;
+            string who = playerAvailable
+                ? (Player.Name ?? playerCid.ToString())
+                : "Unknown";					//end
+            //DebugLog($"Setting to default profile for {Player.Name} ({Player.CID}) {PlayerHelper.IsValid}");
+            DebugLog($"Setting to default profile for {who} ({playerCid}) {PlayerHelper.IsValid}"); //
 
             if (Player.Available && this.profileByCID.TryGetValue(Player.CID, out string? charProfile))
                 if (this.SetProfile(charProfile))
@@ -538,6 +544,51 @@ public class Configuration
     public bool                                Wrath_AutoSetupJobs { get; set; } = true;
     public WrathCombo.API.Enum.DPSRotationMode Wrath_TargetingTank    = WrathCombo.API.Enum.DPSRotationMode.Highest_Max;
     public WrathCombo.API.Enum.DPSRotationMode Wrath_TargetingNonTank = WrathCombo.API.Enum.DPSRotationMode.Lowest_Current;
+
+    public int Wrath_DpsAoeTargetsDefault = 3;			//追加
+    public Dictionary<Job, int> Wrath_DpsAoeTargetsByJob = new()
+    {
+        // Tanks
+        [Job.GLA] = 2,
+        [Job.PLD] = 2,
+        [Job.MRD] = 2,
+        [Job.WAR] = 2,
+        [Job.DRK] = 2,
+        [Job.GNB] = 2,
+
+        // Healers
+        [Job.CNJ] = 3,
+        [Job.WHM] = 3,
+        [Job.SCH] = 3,
+        [Job.AST] = 3,
+        [Job.SGE] = 3,
+
+        // Melee
+        [Job.PGL] = 3,
+        [Job.MNK] = 3,
+        [Job.LNC] = 3,
+        [Job.DRG] = 3,
+        [Job.ROG] = 3,
+        [Job.NIN] = 3,
+        [Job.SAM] = 3,
+        [Job.RPR] = 3,
+        [Job.VPR] = 3,
+
+        // Phys ranged
+        [Job.ARC] = 3,
+        [Job.BRD] = 3,
+        [Job.MCH] = 4,
+        [Job.DNC] = 3,
+
+        // Casters
+        [Job.THM] = 3,
+        [Job.BLM] = 3,
+        [Job.ACN] = 3,
+        [Job.SMN] = 3,
+        [Job.RDM] = 3,
+        [Job.PCT] = 3,
+        [Job.BLU] = 3,
+    };
     #endregion
 
     #region RSR
@@ -580,6 +631,7 @@ public class Configuration
     public float MaxDistanceToTargetAoEFloat = 12;
 
     internal bool positionalRoleBased = true;
+    public bool CustomDistance1 = false; //追加
     public bool PositionalRoleBased
     {
         get => this.positionalRoleBased;
@@ -619,10 +671,16 @@ public class Configuration
 
     public bool DisableRenderWhileActive = false;
 
-    public bool       OverridePartyValidation        = false;
+    public bool       OverridePartyValidation        = true;
     public bool       UsingAlternativeRotationPlugin = false;
     public bool       UsingAlternativeMovementPlugin = false;
     public bool       UsingAlternativeBossPlugin     = false;
+    public bool BMR_FollowTarget = true; //追加
+    public bool BMR_FollowOutOfCombat = true; //追加
+    public bool BMR_ManualTarget = false; //追加
+    public bool RSR_Auto = true; //追加
+    public bool Wrath_ONOFF = false; //追加
+    public bool PassiveLB = false; //追加
 
     public bool        TreatUnsyncAsW2W = true;
     public JobWithRole W2WJobs          = JobWithRole.Tanks;
@@ -1381,9 +1439,18 @@ public static class ConfigTab
                     {
                         BossMod_IPCSubscriber.RefreshPreset("AutoDuty", Resources.AutoDutyPreset);
                         BossMod_IPCSubscriber.RefreshPreset("AutoDuty Passive", Resources.AutoDutyPassivePreset);
+                        BossMod_IPCSubscriber.RefreshPreset("AutoDuty Passive LB", Resources.AutoDutyPassiveLBPreset);
                     }
                     if (ImGui.Checkbox(Loc.Get("ConfigTab.Duty.BMAI.UpdatePresetsAuto"), ref Configuration.BM_UpdatePresetsAutomatically))
                         Configuration.Save();
+
+                    if (ImGui.Checkbox("カスタムディスタンス：近接", ref Configuration.CustomDistance1))
+                        Configuration.Save();
+                    ImGuiComponents.HelpMarker("SMN,RDM");
+                    /*if (ImGui.Checkbox("カスタムディスタンス：遠隔", ref Configuration.CustomDistance2))
+                        Configuration.Save();
+                    ImGuiComponents.HelpMarker("WHM,SCH,SGE");*/
+
                     if (ImGui.Checkbox(Loc.Get("ConfigTab.Duty.BMAI.MaxDistanceRoleBased"), ref Configuration.maxDistanceToTargetRoleBased))
                     {
                         Configuration.MaxDistanceToTargetRoleBased = Configuration.maxDistanceToTargetRoleBased;
@@ -1593,6 +1660,57 @@ public static class ConfigTab
                 Configuration.Save();
             ImGuiComponents.HelpMarker(Loc.Get("ConfigTab.Duty.OverridePartyValidationHelp"));
 
+            if (ImGui.Checkbox("・RSRをManualモードで使用する", ref Configuration.RSR_Auto))
+            {
+                if (Configuration.RSR_Auto && RSR_IPCSubscriber.IsEnabled)
+                {
+                    Configuration.BMR_ManualTarget = false; //
+                    ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeone2 true");
+                    ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeoneType off");
+                }
+                else if (RSR_IPCSubscriber.IsEnabled)
+                {
+                    Configuration.BMR_ManualTarget = true;
+                    ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeone2 false");
+                    ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeoneType Auto");
+                }
+                else
+                {
+                    Configuration.RSR_Auto = false;
+                    //Configuration.BMR_ManualTarget = true;
+                }
+
+                Configuration.Save();
+            }
+            if (ImGui.Checkbox("・BMRAIのManualTargetingをONにする", ref Configuration.BMR_ManualTarget))
+            {
+                if (Configuration.BMR_ManualTarget && RSR_IPCSubscriber.IsEnabled)
+                {
+                    Configuration.RSR_Auto = false;
+                    ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeone2 false");
+                    ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeoneType Auto");
+                }
+                else if (RSR_IPCSubscriber.IsEnabled)
+                {
+                    Configuration.RSR_Auto = true;
+                    ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeone2 true");
+                    ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeoneType off");
+                }
+                else
+                {
+                    Configuration.RSR_Auto = false;
+                    //Configuration.BMR_ManualTarget = true;
+                }
+                Configuration.Save();
+            }
+            if (ImGui.Checkbox("・BMRAIのFollowTargetをONにする", ref Configuration.BMR_FollowTarget))
+                Configuration.Save();
+            if (ImGui.Checkbox("・BMRAIのFollow Out Of CombatをONにする", ref Configuration.BMR_FollowOutOfCombat))
+                Configuration.Save();
+            if (ImGui.Checkbox("・終了後にWrathComboをONにする", ref Configuration.Wrath_ONOFF))
+                Configuration.Save();
+            if (ImGui.Checkbox("VBM,BMRのプリセットをLB仕様に設定", ref Configuration.PassiveLB))
+                Configuration.Save();
 
             ImGui.PushStyleVar(ImGuiStyleVar.SelectableTextAlign, new Vector2(0.5f, 0.5f));
             bool advModeHeader = ImGui.Selectable(Loc.Get("ConfigTab.Duty.Advanced.Header"), advModeHeaderSelected, ImGuiSelectableFlags.DontClosePopups);

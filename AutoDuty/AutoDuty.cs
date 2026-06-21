@@ -35,22 +35,23 @@ namespace AutoDuty;
 
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.Objects.Enums;
+using Dalamud.Game.DutyState;
 using Data;
 using ECommons.Automation.NeoTaskManager;
 using ECommons.Configuration;
 using ECommons.EzIpcManager;
 using ECommons.IPC.Subscribers;
+using FFXIVClientStructs.FFXIV.Client.UI.Arrays;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 using Lumina.Excel.Sheets;
+using Multibox;
 using Pictomancy;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using Dalamud.Game.DutyState;
-using FFXIVClientStructs.FFXIV.Client.UI.Arrays;
-using Multibox;
+using WrathCombo.API.Enum;
 using static Data.Classes;
 using TaskManager = ECommons.Automation.NeoTaskManager.TaskManager;
 
@@ -108,6 +109,8 @@ public sealed class AutoDuty : IDalamudPlugin
 
     internal static   string         Name   => "AutoDuty";
     internal static   AutoDuty       Plugin { get; private set; } = null!;
+    private static readonly HashSet<uint> ManualRotationTerritories = [952, 1292]; //
+    private static readonly string DisableAbilitiesPathName = "(540) Accrue Enmity from Multiple Targets"; //
     internal          bool           stopForCombat    = true;
     internal readonly DirectoryInfo  pathsDirectory   = null!;
     internal readonly FileInfo       assemblyFileInfo = null!;
@@ -275,6 +278,8 @@ public sealed class AutoDuty : IDalamudPlugin
     private         SettingsActive settingsActive         = SettingsActive.None;
     private         SettingsActive bareModeSettingsActive = SettingsActive.None;
     private         DateTime       lastRotationSetTime    = DateTime.MinValue;
+    private DPSRotationMode? savedWrathTargetingTank; //
+    private DPSRotationMode? savedWrathTargetingNonTank; //
     public readonly bool           isDev;
 
     private readonly (string[], string, Action<string[]>)[] commands = null!;
@@ -311,7 +316,7 @@ public sealed class AutoDuty : IDalamudPlugin
             this.assemblyDirectoryInfo = this.assemblyFileInfo.Directory;
 
             this.Version = 
-                ((PluginInterface.IsDev     ? new Version(0,0,0, 315) :
+                ((PluginInterface.IsDev     ? new Version(0,0,0, 320) :
                   PluginInterface.IsTesting ? PluginInterface.Manifest.TestingAssemblyVersion ?? PluginInterface.Manifest.AssemblyVersion : PluginInterface.Manifest.AssemblyVersion)!).Revision;
 
             if (!this.configDirectory.Exists)
@@ -840,7 +845,23 @@ public sealed class AutoDuty : IDalamudPlugin
                 if (path?.Actions != null)
                     this.Actions = [..path.Actions];
 
-                if(MultiboxUtility.Config.MultiBox && MultiboxUtility.Config.SynchronizePath && MultiboxUtility.Config.Host)
+                Svc.Log.Debug($"[LoadPath] Loaded path file: {this.pathFile}");	//start
+                Svc.Log.Info($"[LoadPath] pathFile value: '{this.pathFile}'");
+
+                if (!string.IsNullOrEmpty(this.pathFile))
+                {
+                    string loadedFileName = Path.GetFileNameWithoutExtension(this.pathFile);
+                    Svc.Log.Info($"[LoadPath] ✓ Loaded fileName: '{loadedFileName}'");
+                    Svc.Log.Info($"[LoadPath] ✓ Target ability-disabling path: '{DisableAbilitiesPathName}'");
+                    Svc.Log.Info($"[LoadPath] ✓ fileName length: {loadedFileName.Length}, target length: {DisableAbilitiesPathName.Length}");
+                    Svc.Log.Info($"[LoadPath] ✓ Files match: {loadedFileName.Equals(DisableAbilitiesPathName, StringComparison.InvariantCultureIgnoreCase)}");
+                }
+                else
+                {
+                    Svc.Log.Info($"[LoadPath] ⚠ pathFile is empty!");
+                }								//end
+
+                if (MultiboxUtility.Config.MultiBox && MultiboxUtility.Config.SynchronizePath && MultiboxUtility.Config.Host)
                     MultiboxUtility.Server.SendPath();
             }
 
@@ -1062,7 +1083,8 @@ public sealed class AutoDuty : IDalamudPlugin
 
         this.Stage =  Stage.Looping;
         this.States   |= PluginState.Looping;
-        this.SetGeneralSettings(false);
+        //this.SetGeneralSettings(false); ２か所？
+        this.SetGeneralSettings(true);
         VNavmesh_IPCSubscriber.SetMovementAllowed(true);
         this.taskManager.Abort();
         Svc.Log.Info($"Running {this.CurrentTerritoryContent.Name} {Configuration.LoopTimes} Times");
@@ -1374,7 +1396,8 @@ public sealed class AutoDuty : IDalamudPlugin
 
     private void LoopsCompleteActions()
     {
-        this.SetGeneralSettings(false);
+        //this.SetGeneralSettings(false); ２か所？
+        this.SetGeneralSettings(true);
 
         if (Configuration.EnableTerminationActions)
         {
@@ -1544,6 +1567,8 @@ public sealed class AutoDuty : IDalamudPlugin
         {
             if (PartyHelper.PartyInCombat() && Plugin.stopForCombat)
             {
+                Svc.Log.Info($"[StageReadingPath] Party in combat, calling SetRotationPluginSettings(true)"); //追加?
+
                 if (Configuration is { AutoManageRotationPluginState: true, UsingAlternativeRotationPlugin: false })
                     this.SetRotationPluginSettings(true);
                 VNavmesh_IPCSubscriber.Path_Stop();
@@ -1627,6 +1652,9 @@ public sealed class AutoDuty : IDalamudPlugin
             this.Stage = Stage.Action;
             return;
         }
+
+        if (!VNavmesh_IPCSubscriber.Nav_IsReady)	//追加
+            return;					//追加
 
         if (!VNavmesh_IPCSubscriber.SimpleMove_PathfindInProgress && !VNavmesh_IPCSubscriber.Path_IsRunning)
         {
@@ -1857,6 +1885,7 @@ public sealed class AutoDuty : IDalamudPlugin
         {
             this.CurrentTerritoryContent = content;
             this.pathFile                = $"{Plugin.pathsDirectory.FullName}/({Svc.ClientState.TerritoryType}) {content.EnglishName?.Replace(":", "")}.json";
+            Svc.Log.Debug($"[StartNavigation] Set pathFile to: {this.pathFile}"); //追加?
             this.LoadPath();
 
             if (false && content.DutyModes != DutyMode.None)
@@ -1908,6 +1937,7 @@ public sealed class AutoDuty : IDalamudPlugin
         {
             BossMod_IPCSubscriber.RefreshPreset("AutoDuty",         Resources.AutoDutyPreset);
             BossMod_IPCSubscriber.RefreshPreset("AutoDuty Passive", Resources.AutoDutyPassivePreset);
+            BossMod_IPCSubscriber.RefreshPreset("AutoDuty Passive LB", Resources.AutoDutyPassiveLBPreset);
         }
 
         if (Configuration.AutoManageBossModAISettings) 
@@ -1958,6 +1988,70 @@ public sealed class AutoDuty : IDalamudPlugin
         else
         {
             this.Stage = Stage.Stopped;
+
+            BossMod_IPCSubscriber.DisablePresets();
+            Chat.ExecuteCommand($"/vbm ar clear");
+            //YesAlready_IPCSubscriber.SetState(true);
+
+            if (IPCSubscriber_Common.IsReady("BossModReborn"))
+            {
+                if (!Configuration.RSR_Auto)
+                {
+                    ////Chat.ExecuteCommand($"/bmrai on"); //追加
+                    Chat.ExecuteCommand($"/bmrai off"); //追加
+                }
+                else
+                {
+                    Chat.ExecuteCommand($"/bmrai off"); //追加
+                }
+                Chat.ExecuteCommand($"/bmrai setpresetname clear"); //追加
+                Chat.ExecuteCommand($"/bmr cfg AIConfig ManualTarget false"); //追加
+                Chat.ExecuteCommand($"/bmr cfg AIConfig FollowTarget false"); //追加
+                Chat.ExecuteCommand($"/bmr cfg AIConfig FollowOutOfCombat false"); //追加
+                Chat.ExecuteCommand($"/bmrai positional any"); //追加
+            }
+
+            if (IPCSubscriber_Common.IsReady("BossMod") && !IPCSubscriber_Common.IsReady("BossModReborn"))
+            {
+                Chat.ExecuteCommand($"/vbm ai enabled off");
+                Chat.ExecuteCommand($"/vbm ar clear");
+            }
+
+            if (RSR_IPCSubscriber.IsEnabled)
+            {
+                Chat.ExecuteCommand($"/rotation Settings HostileType 2"); //追加
+                ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeone2 false"); //追加
+                ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeoneType Auto"); //追加
+                if (Player.Object?.ClassJob.RowId == 39)
+                {
+                    //Chat.ExecuteCommand("/rotation ToggleActions ハルパー false"); //追加
+                }
+
+                Chat.ExecuteCommand("/rotation ToggleActions 7531 true");  // Rampart
+                Chat.ExecuteCommand("/rotation ToggleActions 7535 true");  // Reprisal
+                Chat.ExecuteCommand("/rotation ToggleActions 20 true"); // Fight or Flight
+                Chat.ExecuteCommand("/rotation ToggleActions 24 true");  // Shield Lob
+                Chat.ExecuteCommand("/rotation ToggleActions 41 true");  // Overpower
+
+                RSR_IPCSubscriber.RotationStop(); //追加
+            }
+
+            if (!Configuration.Wrath_ONOFF)
+            {
+                Wrath_IPCSubscriber.Release();
+                if (Wrath_IPCSubscriber.IsEnabled)
+                {
+                    Chat.ExecuteCommand($"/wrath auto off"); //追加
+                }
+            }
+            else
+            {
+                Wrath_IPCSubscriber.Release();
+                if (Wrath_IPCSubscriber.IsEnabled)
+                {
+                    Chat.ExecuteCommand($"/wrath auto on"); //追加
+                }
+            }
         }
     }
 
@@ -1998,22 +2092,84 @@ public sealed class AutoDuty : IDalamudPlugin
         }
     }
 
+    private bool IsCurrentPathDisablingAbilities()	//start
+    {
+        if (string.IsNullOrEmpty(this.pathFile))
+            return false;
+
+        string fileName = Path.GetFileNameWithoutExtension(this.pathFile);
+
+        // Try multiple matching strategies
+        bool isExactMatch = fileName.Equals(DisableAbilitiesPathName, StringComparison.InvariantCultureIgnoreCase);
+        bool isContainsMatch = fileName.Contains("540") && fileName.Contains("Accrue") && fileName.Contains("Enmity");
+        return isExactMatch || isContainsMatch;
+    }							//end
+
     internal void SetRotationPluginSettings(bool on, bool ignoreConfig = false, bool ignoreTimer = false)
     {
-        // Only try to set the rotation state every few seconds
-        if (on && (DateTime.Now - this.lastRotationSetTime).TotalSeconds < 5 && !ignoreTimer)
-            return;
-        
-        if(on) 
-            this.lastRotationSetTime = DateTime.Now;
+        // Check if we need to disable/enable abilities for this path (do this BEFORE throttle check)	//start
+        bool pathDisablesAbilities = IsCurrentPathDisablingAbilities();
+        bool autoManageEnabled = Configuration.AutoManageRotationPluginState;
+        bool rsrEnabled = RSR_IPCSubscriber.IsEnabled;
+        bool shouldManagePathAbilities = !ignoreConfig && autoManageEnabled && rsrEnabled && pathDisablesAbilities;
 
-        if (!ignoreConfig && !Configuration.AutoManageRotationPluginState)
-            return;
+        if (shouldManagePathAbilities)
+        {
+            // Always disable abilities on this path - regardless of on/off parameter
+            Chat.ExecuteCommand("/rotation ToggleActions 7531 false");  // Rampart
+            Chat.ExecuteCommand("/rotation ToggleActions 7535 false");  // Reprisal
+            Chat.ExecuteCommand("/rotation ToggleActions 20 false");    // Fight or Flight
+            Chat.ExecuteCommand("/rotation ToggleActions 24 false");    // Shield Lob
+            Chat.ExecuteCommand("/rotation ToggleActions 41 false");    // Overpower
+            this.lastRotationSetTime = DateTime.Now;
+            // Continue to RSR/BM initialization (don't return yet)
+        }
+        else
+        {
+            // Only try to set the rotation state every few seconds (when NOT managing path abilities)
+            if (on && (DateTime.Now - this.lastRotationSetTime).TotalSeconds < 5 && !ignoreTimer)
+                return;
+
+            if (on)
+                this.lastRotationSetTime = DateTime.Now;
+
+            if (!ignoreConfig && !Configuration.AutoManageRotationPluginState)
+                return;
+        } //
+
 
         bool? EnableWrath(bool active)
         {
             if (Wrath_IPCSubscriber.IsEnabled)
             {
+                Chat.ExecuteCommand("/wrath syncboss off");
+
+                // Avoid accessing Player.ClassJob.Value directly because Lumina RowRef.Value can throw
+                // (for example during unload when resources are disposed). Use a safe lookup instead.
+                JobRole currentRole = JobRole.None;
+                try
+                {
+                    var classJobRow = Svc.Data.GetExcelSheet<ClassJob>()?.GetRowOrDefault(Player.ClassJob.RowId);
+                    if (classJobRow is ClassJob cj)
+                        currentRole = cj.GetJobRole();
+                }
+                catch (Exception ex) when (ex is InvalidOperationException || ex is ObjectDisposedException)
+                {
+                    // If the underlying Lumina data is disposed/unavailable, default to None.
+                    currentRole = JobRole.None;
+                }
+
+                if (currentRole == JobRole.Tank)
+                {
+                    Chat.ExecuteCommand($"/wrath auto target damage {Configuration.Wrath_TargetingTank}");
+                    Chat.ExecuteCommand($"/wrath auto on");
+                }
+                else
+                {
+                    Chat.ExecuteCommand($"/wrath auto target damage {Configuration.Wrath_TargetingNonTank}");
+                    Chat.ExecuteCommand($"/wrath auto on");
+                }
+
                 bool wrathRotationReady = true;
                 if (active)
                     wrathRotationReady = Wrath_IPCSubscriber.IsCurrentJobAutoRotationReady ||
@@ -2036,10 +2192,51 @@ public sealed class AutoDuty : IDalamudPlugin
             if (RSR_IPCSubscriber.IsEnabled)
             {
                 Svc.Log.Debug("RSR: " + active);
-                if (active)
-                    RSR_IPCSubscriber.RotationAuto();
+
+
+                // Disable specific abilities for this path (already checked in shouldManagePathAbilities)
+                if (shouldManagePathAbilities)
+                {
+                    Chat.ExecuteCommand("/rotation ToggleActions 7531 false");  // Rampart
+                    Chat.ExecuteCommand("/rotation ToggleActions 7535 false");  // Reprisal
+                    Chat.ExecuteCommand("/rotation ToggleActions 20 false");    // Fight or Flight
+                    Chat.ExecuteCommand("/rotation ToggleActions 24 false");    // Shield Lob
+                    Chat.ExecuteCommand("/rotation ToggleActions 41 false");    // Overpower
+                }
+
+                if (/*active &&*/ !AutoDuty.Configuration.RSR_Auto)
+                {
+                    if (ManualRotationTerritories.Contains(Svc.ClientState.TerritoryType))
+                    {
+                        RSR_IPCSubscriber.RotationManual();
+                        ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeone2 true");
+                        ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeoneType off");
+                        Chat.ExecuteCommand("/rotation Settings HostileType 0");
+                    }
+                    else
+                    {
+                        RSR_IPCSubscriber.RotationAuto();
+                        ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeone2 false");
+                        ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeoneType Auto");
+                        Chat.ExecuteCommand("/rotation Settings HostileType 0");
+                    }
+
+                }
+                else if (/*active &&*/ AutoDuty.Configuration.RSR_Auto)
+                {
+                    RSR_IPCSubscriber.RotationManual();
+                    ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeone2 true");
+                    ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeoneType off");
+                    Chat.ExecuteCommand("/rotation Settings HostileType 0");
+                }
                 else
+                {
+                    //Chat.ExecuteCommand("/rotation ToggleActions ハルパー false"); //追加
+                    ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeone2 false");
+                    ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeoneType Auto");
+                    Chat.ExecuteCommand("/rotation Settings HostileType 2");
                     RSR_IPCSubscriber.RotationStop();
+                }
                 return true;
             }
             return null;
@@ -2047,22 +2244,111 @@ public sealed class AutoDuty : IDalamudPlugin
 
         bool? EnableBM(bool active, bool rotation)
         {
+
             if (BossMod_IPCSubscriber.IsEnabled)
             {
-                if (active)
+                if (IPCSubscriber_Common.IsReady("BossMod") && !IPCSubscriber_Common.IsReady("BossModReborn")) //
                 {
-                    BossMod_IPCSubscriber.SetRange(Configuration.MaxDistanceToTargetFloat);
-                    if (rotation)
-                        BossMod_IPCSubscriber.SetPreset("AutoDuty", Resources.AutoDutyPreset);
-                    else if (ConfigurationMain.Instance.GetCurrentConfig.AutoManageBossModAISettings)
-                        BossMod_IPCSubscriber.SetPreset("AutoDuty Passive", Resources.AutoDutyPassivePreset);
-                    return true;
+                    Chat.ExecuteCommand($"/vbm ai enabled on"); //追加
+                    Chat.ExecuteCommand($"/vbm cfg ZoneModuleConfig EnableQuestBattles true"); //追加
+                }
+
+                if (IPCSubscriber_Common.IsReady("BossModReborn"))
+                {
+                    ////Chat.ExecuteCommand($"/bmrai on"); //追加
+                    Chat.ExecuteCommand($"/bmrai off"); //追加
+                    Chat.ExecuteCommand($"/bmrai maxdistancetarget {AutoDuty.Configuration.MaxDistanceToTargetFloat}"); //追加
+                    Chat.ExecuteCommand($"/bmrai positional {AutoDuty.Configuration.PositionalEnum}"); //追加
+                    Chat.ExecuteCommand($"/bmr cfg ZoneModuleConfig EnableQuestBattles true"); //追加
+                    if (AutoDuty.Configuration.BMR_ManualTarget)
+                    {
+                        Chat.ExecuteCommand($"/bmr cfg AIConfig ManualTarget true"); //追加
+                    }
+                    else
+                    {
+                        Chat.ExecuteCommand($"/bmr cfg AIConfig ManualTarget false"); //追加
+                    }
+
+                    if (AutoDuty.Configuration.BMR_FollowTarget)
+                    {
+                        Chat.ExecuteCommand($"/bmr cfg AIConfig FollowTarget true"); //追加
+                    }
+                    else
+                    {
+                        Chat.ExecuteCommand($"/bmr cfg AIConfig FollowTarget false"); //追加
+                    }
+
+                    if (AutoDuty.Configuration.BMR_FollowOutOfCombat)
+                    {
+                        Chat.ExecuteCommand($"/bmr cfg AIConfig FollowOutOfCombat true"); //追加
+                    }
+                    else
+                    {
+                        Chat.ExecuteCommand($"/bmr cfg AIConfig FollowOutOfCombat false"); //追加
+                    }
+                }
+
+                if (active || IPCSubscriber_Common.IsReady("BossMod") || IPCSubscriber_Common.IsReady("BossModReborn"))
+                {
+                    BossMod_IPCSubscriber.SetRange(AutoDuty.Configuration.MaxDistanceToTargetFloat);
+
+                    if (!IPCSubscriber_Common.IsReady("BossModReborn"))
+                    {
+                        if (!IPCSubscriber_Common.IsReady("WrathCombo") && !IPCSubscriber_Common.IsReady("RotationSolver") /*|| Configuration.BMR_ManualTarget*//*rotation*/)
+                        {
+                            BossMod_IPCSubscriber.SetPreset("AutoDuty", Resources.AutoDutyPreset);
+                            Chat.ExecuteCommand($"/vbm ar activate AutoDuty");
+                            Chat.ExecuteCommand($"/vbm ai enabled on");
+                            //Chat.ExecuteCommand($"/vbm ar activate AutoDuty Passive LB");
+                        }
+                        else if (!AutoDuty.Configuration.PassiveLB)
+                        {
+                            BossMod_IPCSubscriber.SetPreset("AutoDuty Passive", Resources.AutoDutyPassivePreset);
+                            Chat.ExecuteCommand($"/vbm ar activate AutoDuty Passive");
+                            Chat.ExecuteCommand($"/vbm ai enabled on");
+                        }
+                        else if (AutoDuty.Configuration.PassiveLB)
+                        {
+                            BossMod_IPCSubscriber.SetPreset("AutoDuty Passive LB", Resources.AutoDutyPassiveLBPreset);
+                            Chat.ExecuteCommand($"/vbm ar activate AutoDuty Passive LB");
+                            Chat.ExecuteCommand($"/vbm ai enabled on");
+                        }
+                        return true;
+                    }
+                    else if (IPCSubscriber_Common.IsReady("BossModReborn"))
+                    {
+                        if (!IPCSubscriber_Common.IsReady("WrathCombo") && !IPCSubscriber_Common.IsReady("RotationSolver") /*|| Configuration.BMR_ManualTarget*//*rotation*/)
+                        {
+                            BossMod_IPCSubscriber.SetPreset("AutoDuty", Resources.AutoDutyPassivePreset);
+                            Chat.ExecuteCommand("/bmrai setpresetname AutoDuty");
+                            Chat.ExecuteCommand("/bmr ar set AutoDuty");
+                        }
+                        else if (!AutoDuty.Configuration.PassiveLB)
+                        {
+                            BossMod_IPCSubscriber.SetPreset("AutoDuty Passive", Resources.AutoDutyPassivePreset);
+                            Chat.ExecuteCommand("/bmrai setpresetname AutoDuty Passive");
+                            Chat.ExecuteCommand("/bmr ar set AutoDuty Passive");
+                        }
+                        else if (AutoDuty.Configuration.PassiveLB)
+                        {
+                            BossMod_IPCSubscriber.SetPreset("AutoDuty Passive LB", Resources.AutoDutyPassiveLBPreset);
+                            Chat.ExecuteCommand("/bmrai setpresetname AutoDuty Passive LB");
+                            Chat.ExecuteCommand("/bmr ar set AutoDuty Passive LB");
+                        }
+                        return true;
+                    }
                 }
                 else if (!rotation || ConfigurationMain.Instance.GetCurrentConfig.AutoManageBossModAISettings)
                 {
                     BossMod_IPCSubscriber.DisablePresets();
+                    if (IPCSubscriber_Common.IsReady("BossModReborn"))
+                    {
+                        Chat.ExecuteCommand("/bmrai setpresetname clear");
+                        Chat.ExecuteCommand("/bmr ar set clear");
+                    }
                     return true;
                 }
+
                 return false;
             }
             return null;
@@ -2070,14 +2356,14 @@ public sealed class AutoDuty : IDalamudPlugin
 
         bool act = on;
 
-        bool  wrathEnabled = Configuration is { rotationPlugin: RotationPlugin.WrathCombo or RotationPlugin.All, DutyModeEnum: not DutyMode.NoviceHall };
-        bool? wrath        = EnableWrath(on && wrathEnabled);
+        bool wrathEnabled = Configuration is { rotationPlugin: RotationPlugin.WrathCombo or RotationPlugin.All, DutyModeEnum: not DutyMode.NoviceHall };
+        bool? wrath = EnableWrath(on && wrathEnabled);
         if (on && wrathEnabled && wrath.HasValue)
             act = !wrath.Value;
-        
-        bool  rsrEnabled = Configuration is { rotationPlugin: RotationPlugin.RotationSolverReborn or RotationPlugin.All, DutyModeEnum: not DutyMode.NoviceHall };
-        bool? rsr        = EnableRSR(act && on && rsrEnabled);
-        if (on && rsrEnabled && rsr.HasValue) 
+
+        bool rsrEnabledPlugin = Configuration is { rotationPlugin: RotationPlugin.RotationSolverReborn or RotationPlugin.All, DutyModeEnum: not DutyMode.NoviceHall };
+        bool? rsr = EnableRSR(act && on && rsrEnabledPlugin);
+        if (on && rsrEnabledPlugin && rsr.HasValue)
             act = !rsr.Value;
 
         EnableBM(on, act && (Configuration.rotationPlugin is RotationPlugin.BossMod or RotationPlugin.All || Configuration.DutyModeEnum is DutyMode.NoviceHall));
@@ -2090,11 +2376,17 @@ public sealed class AutoDuty : IDalamudPlugin
         if (defaults)
         {
             Configuration.MaxDistanceToTargetRoleBased = true;
-            Configuration.PositionalRoleBased             = true;
+            Configuration.PositionalRoleBased = true;
         }
 
         BossMod_IPCSubscriber.SetMovement(true);
         BossMod_IPCSubscriber.SetRange(Configuration.MaxDistanceToTargetFloat);
+
+        if (IPCSubscriber_Common.IsReady("BossModReborn"))
+        {
+            Chat.ExecuteCommand($"/bmrai maxdistancetarget {AutoDuty.Configuration.MaxDistanceToTargetFloat}"); //追加
+            Chat.ExecuteCommand($"/bmrai positional {AutoDuty.Configuration.PositionalEnum}"); //追加
+        }
     }
 
     internal static void BMRoleChecks()
@@ -2109,7 +2401,8 @@ public sealed class AutoDuty : IDalamudPlugin
         ClassJob classJob = Player.ClassJob.Value;
 
         //RoleBased MaxDistanceToTarget
-        float maxDistanceToTarget = (classJob.GetJobRole() is JobRole.Melee or JobRole.Tank ? 
+        float maxDistanceToTarget = (classJob.GetJobRole() is JobRole.Melee or JobRole.Tank ||
+            (Configuration.CustomDistance1 && classJob.RowId == 27) || (Configuration.CustomDistance1 && classJob.RowId == 35) ?
                                          Configuration.MaxDistanceToTargetRoleMelee : Configuration.MaxDistanceToTargetRoleRanged);
         if (PlayerHelper.IsValid && Configuration.MaxDistanceToTargetRoleBased && Math.Abs(Configuration.MaxDistanceToTargetFloat - maxDistanceToTarget) > 0.01f)
         {
@@ -2119,8 +2412,8 @@ public sealed class AutoDuty : IDalamudPlugin
 
         //RoleBased MaxDistanceToTargetAoE
 
-        float maxDistanceToTargetAoE = (classJob.GetJobRole() is JobRole.Melee or JobRole.Tank or JobRole.Ranged_Physical || (classJob.GetJobRole() == JobRole.Healer && classJob.RowId != (uint) ClassJobType.Astrologian) ?
-                                            Configuration.MaxDistanceToTargetRoleMelee : Configuration.MaxDistanceToTargetRoleRanged);
+        float maxDistanceToTargetAoE = (classJob.GetJobRole() is JobRole.Melee or JobRole.Tank || classJob.RowId == 38  /*JobRole.Ranged_Physical*/ || (classJob.GetJobRole() == JobRole.Healer && classJob.RowId != (uint)ClassJobType.Astrologian) ?
+                                            Configuration.MaxDistanceToTargetRoleMelee : ((classJob.RowId == 5 || classJob.RowId == 23 || classJob.RowId == 31) ? 5.0f : Configuration.MaxDistanceToTargetRoleRanged));
         if (PlayerHelper.IsValid && Configuration.MaxDistanceToTargetRoleBased && Math.Abs(Configuration.MaxDistanceToTargetAoEFloat - maxDistanceToTargetAoE) > 0.01f)
         {
             Configuration.MaxDistanceToTargetAoEFloat = maxDistanceToTargetAoE;
@@ -2314,7 +2607,72 @@ public sealed class AutoDuty : IDalamudPlugin
         foreach (IActiveHelper helper in ActiveHelper.activeHelpers) 
             helper.StopIfRunning();
 
-        Wrath_IPCSubscriber.Release();
+        BossMod_IPCSubscriber.DisablePresets();
+        Chat.ExecuteCommand($"/vbm ar clear");
+        //YesAlready_IPCSubscriber.SetState(true);
+
+        if (IPCSubscriber_Common.IsReady("BossModReborn"))
+        {
+            if (!Configuration.RSR_Auto)
+            {
+                ////Chat.ExecuteCommand($"/bmrai on"); //追加
+                Chat.ExecuteCommand($"/bmrai off"); //追加
+            }
+            else
+            {
+                Chat.ExecuteCommand($"/bmrai off"); //追加
+            }
+            Chat.ExecuteCommand($"/bmrai setpresetname clear"); //追加
+            Chat.ExecuteCommand($"/bmr cfg AIConfig ManualTarget false"); //追加
+            Chat.ExecuteCommand($"/bmr cfg AIConfig FollowTarget false"); //追加
+            Chat.ExecuteCommand($"/bmr cfg AIConfig FollowOutOfCombat false"); //追加
+            Chat.ExecuteCommand($"/bmrai positional any"); //追加
+        }
+
+        if (IPCSubscriber_Common.IsReady("BossMod") && !IPCSubscriber_Common.IsReady("BossModReborn")) //
+        {
+            Chat.ExecuteCommand($"/vbm ai enabled off"); //追加 on>>off
+        }
+
+        if (RSR_IPCSubscriber.IsEnabled)
+        {
+            Chat.ExecuteCommand($"/rotation Settings HostileType 2"); //追加
+            ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeone2 false"); //追加
+            ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeoneType Auto"); //追加
+            if (Player.Object?.ClassJob.RowId == 39)
+            {
+                //Chat.ExecuteCommand("/rotation ToggleActions ハルパー false"); //追加
+            }
+
+            Chat.ExecuteCommand("/rotation ToggleActions 7531 true");  // Rampart
+            Chat.ExecuteCommand("/rotation ToggleActions 7535 true");  // Reprisal
+            Chat.ExecuteCommand("/rotation ToggleActions 20 true"); // Fight or Flight
+            Chat.ExecuteCommand("/rotation ToggleActions 24 true");  // Shield Lob
+            Chat.ExecuteCommand("/rotation ToggleActions 41 true");  // Overpower
+
+            RSR_IPCSubscriber.RotationStop(); //追加
+        }
+
+        if (!Configuration.Wrath_ONOFF)
+        {
+            Wrath_IPCSubscriber.Release();
+            if (Wrath_IPCSubscriber.IsEnabled)
+            {
+                Chat.ExecuteCommand($"/wrath auto off"); //追加
+            }
+        }
+        else
+        {
+            Wrath_IPCSubscriber.Release();
+            if (Wrath_IPCSubscriber.IsEnabled)
+            {
+                Chat.ExecuteCommand($"/wrath auto on"); //追加
+            }
+        }
+
+        if (Wrath_IPCSubscriber.IsEnabled)
+            Wrath_IPCSubscriber.SetDpsAoeTargetsDefault();
+
         this.action = "";
     }
 

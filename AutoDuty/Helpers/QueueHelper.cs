@@ -239,7 +239,22 @@ namespace AutoDuty.Helpers
 
             if (!this._allConditionsMetToJoin && AgentContentsFinder.Instance()->SelectedDuty.Id != _content!.ContentFinderCondition)
             {
-                Svc.Log.Debug($"Queue Helper - Opening ContentsFinder to {_content.Name} because we have the wrong selection of {listAtkComponentTreeListItems[(int)this._addonContentsFinder->DutyList->SelectedItemIndex].Renderer->GetTextNodeById(5)->GetAsAtkTextNode()->NodeText.ToString().Replace("...", "")}");
+                string selectedDutyNameDebug = "<unknown>";
+                int selectedItemIndex = this._addonContentsFinder->DutyList->SelectedItemIndex;
+                if (selectedItemIndex < (uint)listAtkComponentTreeListItems.Count)
+                {
+                    AtkComponentTreeListItem selectedDutyItem = listAtkComponentTreeListItems[(int)selectedItemIndex];
+                    if (selectedDutyItem.Renderer != null)
+                    {
+                        AtkTextNode* textNode = selectedDutyItem.Renderer->GetTextNodeById(5);
+                        if (textNode != null)
+                        {
+                            selectedDutyNameDebug = textNode->NodeText.ToString().Replace("...", string.Empty);
+                        }
+                    }
+                }
+
+                Svc.Log.Debug($"Queue Helper - Opening ContentsFinder to {_content.Name} because we have the wrong selection of {selectedDutyNameDebug}");
                 AgentContentsFinder.Instance()->OpenRegularDuty(_content.ContentFinderCondition);
                 EzThrottler.Throttle("QueueHelper", 500, true);
                 return;

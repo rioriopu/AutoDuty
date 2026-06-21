@@ -80,6 +80,12 @@ namespace AutoDuty.Properties {
             }
         }
         
+        internal static string AutoDutyPassiveLBPreset {
+            get {
+                return ResourceManager.GetString("AutoDutyPassiveLBPreset", resourceCulture);
+            }
+        }
+        
         /// <summary>
         ///   Looks up a localized string similar to {
         ///  &quot;Name&quot;: &quot;AutoDuty&quot;,

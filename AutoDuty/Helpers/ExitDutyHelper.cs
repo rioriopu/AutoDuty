@@ -44,6 +44,8 @@ namespace AutoDuty.Helpers
 
             if (Svc.ClientState.TerritoryType != this._currentTerritoryType || !InDungeon || Svc.ClientState.TerritoryType == 0)
             {
+                if (IPC.Wrath_IPCSubscriber.IsEnabled)			//追加
+                    IPC.Wrath_IPCSubscriber.SetDpsAoeTargetsDefault();	//追加
                 this.Stop();
                 return;
             }
