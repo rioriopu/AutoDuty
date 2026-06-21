@@ -14,9 +14,13 @@ namespace AutoDuty.Helpers
     internal static class LevelingHelper
     {
         private static Content[] levelingDuties = [];
+        private static Content[] levelingDutiesRegularParty = [];
 
-        public static void ResetLevelingDuties() =>
+        public static void ResetLevelingDuties()
+        {
             levelingDuties = [];
+            levelingDutiesRegularParty = [];
+        }
 
         public static readonly uint[] levelingList =
         [
@@ -54,39 +58,89 @@ namespace AutoDuty.Helpers
             1367u, // 63 Shisui of the Violet Tides
         ];
 
+        // [Estell] Regular_Party (4人パーティレベリング) 専用のダンジョンリスト。
+        // 初期内容は Support 用 levelingList と同一。コンテンツサポーターに影響を与えず、
+        // 今後 4人パーティ向けに独立して取捨選択・並べ替えできる。
+        public static readonly uint[] levelingListRegularParty =
+        [
+            1036u, // 15 Sastasha
+            1037u, // 16 TamTara Deepcroft
+            1039u, // 24 The Thousand Maws of Toto-Rak
+            1041u, // 32 Brayflox's Longstop
+            1303u, // 38 Cutter's Cry
+            1042u, // 41 Stone Vigil
+            1330u, // 44 Dzemael Darkhold
+            1331u, // 47 Aurum Vale
+
+            1142u, // 61 Sirensong Sea
+            1144u, // 67 Doma Castle
+            1145u, // 69 Castrum Abania
+            837u,  // 71 Holminster
+            821u,  // 73 Dohn Mheg
+            823u,  // 75 Qitana
+            836u,  // 77 Malikah's Well
+            822u,  // 79 Mt. Gulg
+            952u,  // 81 Tower of Zot
+            969u,  // 83 Tower of Babil
+            970u,  // 85 Vanaspati,
+            974u,  // 87 Ktisis Hyperboreia
+            978u,  // 89 Aitiascope
+            1167u, // 91 Ihuykatumu
+            1193u, // 93 Worqor Zormor
+            1194u, // 95 The Skydeep Cenote
+            1198u, // 97 Vanguard
+            1208u, // 99 Origenics
+        ];
+
         internal static Content[] LevelingDuties
         {
             get
             {
                 if (levelingDuties.Length <= 0)
-                {
-                    IEnumerable<uint> ids = levelingList;
-
-                    if (IPCSubscriber_Common.IsReady("SkipCutscene") || Skippy_IPCSubscriber.MSQSkipEnabled())
-                    {
-                        ids = ids.Concat([
-                            1048u, // 50 Porta Decumana
-                        ]);
-                    } else
-                    {
-                        ids = ids.Concat([
-                            1043u, // 50 Castrum Meridianum
-                            1366u, // 51 Dusk Vigil
-                            1064u, // 53 Sohm Al
-                            1065u, // 55 The Aery
-                            1066u, // 57 The Vault
-                            1109u, // 59 The Great Gubal Library])
-                        ]);
-                    }
-
-
-                    if (Configuration.LevelingListExperimentalEntries)
-                        ids = ids.Concat(levelingListExperimental);
-
-                    levelingDuties = [.. ids.Select(id => ContentHelper.DictionaryContent.GetValueOrDefault(id)).Where(c => c != null).Cast<Content>().OrderBy(x => x.ClassJobLevelRequired).ThenBy(x => x.ItemLevelRequired).ThenBy(x => x.ExVersion).ThenBy(x => x.DawnIndex)];
-                }
+                    levelingDuties = BuildLevelingDuties(levelingList);
                 return levelingDuties;
             }
+        }
+
+        // Regular_Party 専用。基底リストを levelingListRegularParty にすることで Support と独立。
+        internal static Content[] LevelingDutiesRegularParty
+        {
+            get
+            {
+                if (levelingDutiesRegularParty.Length <= 0)
+                    levelingDutiesRegularParty = BuildLevelingDuties(levelingListRegularParty);
+                return levelingDutiesRegularParty;
+            }
+        }
+
+        // 基底の territory ID リストから、カットシーンスキップ有無による Lv50-59 追加と
+        // 実験的エントリを足してレベル順に整列した Content 配列を構築する。
+        private static Content[] BuildLevelingDuties(uint[] baseList)
+        {
+            IEnumerable<uint> ids = baseList;
+
+            if (IPCSubscriber_Common.IsReady("SkipCutscene") || Skippy_IPCSubscriber.MSQSkipEnabled())
+            {
+                ids = ids.Concat([
+                    1048u, // 50 Porta Decumana
+                ]);
+            }
+            else
+            {
+                ids = ids.Concat([
+                    1043u, // 50 Castrum Meridianum
+                    1366u, // 51 Dusk Vigil
+                    1064u, // 53 Sohm Al
+                    1065u, // 55 The Aery
+                    1066u, // 57 The Vault
+                    1109u, // 59 The Great Gubal Library
+                ]);
+            }
+
+            if (Configuration.LevelingListExperimentalEntries)
+                ids = ids.Concat(levelingListExperimental);
+
+            return [.. ids.Select(id => ContentHelper.DictionaryContent.GetValueOrDefault(id)).Where(c => c != null).Cast<Content>().OrderBy(x => x.ClassJobLevelRequired).ThenBy(x => x.ItemLevelRequired).ThenBy(x => x.ExVersion).ThenBy(x => x.DawnIndex)];
         }
 
         internal static Content? SelectHighestLevelingRelevantDuty(LevelingMode mode)
@@ -168,8 +222,10 @@ namespace AutoDuty.Helpers
             // trust=Trust / party=Regular(IL要件チェック込み) / それ以外=None(=Configuration.DutyModeEnum)。
             // CanRun は ItemLevelRequired も判定するため、IL 不足で入れない場合は LastOrDefault が自動的に一つ下のダンジョンを返す。
             DutyMode runMode = trust ? DutyMode.Trust : party ? DutyMode.Regular : DutyMode.None;
-            LevelingDuties.Each(x => Svc.Log.Debug($"Leveling Mode: Duties: {x.Name} CanRun: {x.CanRun(lvl, runMode)}{(trust ? $"CanTrustRun : {x.CanTrustRun()}" : "")}"));
-            curContent = LevelingDuties.LastOrDefault(x => x.CanRun(lvl, runMode));
+            // party のときは Support と独立した専用リストを使用する。
+            Content[] duties = party ? LevelingDutiesRegularParty : LevelingDuties;
+            duties.Each(x => Svc.Log.Debug($"Leveling Mode: Duties: {x.Name} CanRun: {x.CanRun(lvl, runMode)}{(trust ? $"CanTrustRun : {x.CanTrustRun()}" : "")}"));
+            curContent = duties.LastOrDefault(x => x.CanRun(lvl, runMode));
 
             Svc.Log.Debug($"Leveling Mode: We found {curContent?.Name ?? "no duty"} to run");
 
