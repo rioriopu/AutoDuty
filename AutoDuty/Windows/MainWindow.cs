@@ -70,11 +70,11 @@ public sealed class MainWindow : Window, IDisposable
     {
         using ImRaii.DisabledDisposable _ = ImRaii.Disabled(MultiboxUtility.Config.MultiBox && !MultiboxUtility.Config.Host);
 
-        if ((AutoDuty.Configuration.UseSliderInputs  && ImGui.SliderInt("Times", ref AutoDuty.Configuration.LoopTimes, 0, 100)) || 
+        if ((AutoDuty.Configuration.UseSliderInputs  && ImGui.SliderInt("Times", ref AutoDuty.Configuration.LoopTimes, 1, 100)) ||
             (!AutoDuty.Configuration.UseSliderInputs && ImGui.InputInt("Times", ref AutoDuty.Configuration.LoopTimes, 1)))
         {
-            if (AutoDuty.Configuration.LoopTimes < 0) AutoDuty.Configuration.LoopTimes = 0;
-            if (AutoDuty.Configuration.LoopTimes > 100) AutoDuty.Configuration.LoopTimes = 100;
+            if (AutoDuty.Configuration.LoopTimes <= 0)
+                AutoDuty.Configuration.LoopTimes = 1;
 
             if (AutoDuty.Configuration.AutoDutyModeEnum == AutoDutyMode.Playlist)
                 Plugin.PlaylistCurrentEntry?.count = AutoDuty.Configuration.LoopTimes;
@@ -408,7 +408,7 @@ public sealed class MainWindow : Window, IDisposable
     private static (string, Action, Vector4?, bool)[] TabList =>
     [
         ("Main", MainTab.Draw, null, false),
-        ("Build", BuildTab.Draw, null, false),
+        ("Build", BuildTab.DrawBuildTab, null, false),
         ("Paths", PathsTab.Draw, null, false),
         ("Config", ConfigTab.Draw, null, false),
         ("Info", InfoTab.Draw, null, false),
