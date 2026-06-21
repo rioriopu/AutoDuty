@@ -257,7 +257,10 @@ namespace AutoDuty.IPC
     public static class Wrath_IPCSubscriber
     {
         private static Guid? _curLease;
-        private static int? _savedDpsAoeTargets;			//start
+        private static int? _savedDpsAoeTargets;
+
+        // WrathCombo のバージョン差異に対応した DPS AoE ターゲット数設定の enum 名候補
+        private static readonly string[] DpsAoeTargetsOptionNames = ["DPSAoETargets", "DpsAoeTargets", "DPSAoeTargets", "DpsAoETargets"];
 
         internal static void SetDpsAoeTargetsDefault()
         {
@@ -267,29 +270,14 @@ namespace AutoDuty.IPC
                 TryExecuteWrathDpsAoeTargetsCommand(restore);
         }
 
-        private static void RestoreDpsAoeTargetsDefaultIfNeeded()
-        {
-            if (!_savedDpsAoeTargets.HasValue)
-                return;
-            try
-            {
-                SetDpsAoeTargetsDefault();
-            }
-            finally
-            {
-                _savedDpsAoeTargets = null;
-            }
-        }
-
         private static bool TryGetDpsAoeTargetsViaIpc(out int value)
         {
             value = default;
             try
             {
                 Type enumType = typeof(AutoRotationConfigOption);
-                string[] names = ["DPSAoETargets", "DpsAoeTargets", "DPSAoeTargets", "DpsAoETargets"]; // support multiple Wrath versions
 
-                foreach (string name in names)
+                foreach (string name in DpsAoeTargetsOptionNames)
                 {
                     if (!Enum.TryParse(enumType, name, out object? enumValue) || enumValue is null)
                         continue;
@@ -325,9 +313,8 @@ namespace AutoDuty.IPC
             try
             {
                 Type enumType = typeof(AutoRotationConfigOption);
-                string[] names = ["DPSAoETargets", "DpsAoeTargets", "DPSAoeTargets", "DpsAoETargets"]; // support multiple Wrath versions
 
-                foreach (string name in names)
+                foreach (string name in DpsAoeTargetsOptionNames)
                 {
                     if (!Enum.TryParse(enumType, name, out object? enumValue) || enumValue is null)
                         continue;
@@ -368,7 +355,6 @@ namespace AutoDuty.IPC
         /// <returns>
         ///     If the user's current job is fully ready for Auto-Rotation.
         /// </returns>
-        //internal static bool IsCurrentJobAutoRotationReady => WrathIPCWrapper.IsCurrentJobAutoRotationReady();
         internal static bool IsCurrentJobAutoRotationReady
         {
             get
@@ -422,8 +408,6 @@ namespace AutoDuty.IPC
             }
         }
 
-        //internal static bool SetJobAutoReady() => 
-        //    Register() && DoThing(() => WrathIPCWrapper.SetCurrentJobAutoRotationReady(_curLease!.Value));
         internal static bool SetJobAutoReady()
         {
             try

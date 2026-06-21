@@ -69,13 +69,7 @@ namespace AutoDuty.Helpers
                     _ => radius
                 };
 
-                if (Player.Job is Job.ARC)
-                    radius = 3;
-                if (Player.Job is Job.BRD)
-                    radius = 3;
-                if (Player.Job is Job.MCH)
-                    radius = 3;
-                if (Player.Job is Job.DNC)
+                if (Player.Job is Job.ARC or Job.BRD or Job.MCH or Job.DNC)
                     radius = 3;
                 return radius;
             }

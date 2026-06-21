@@ -111,6 +111,15 @@ public sealed class AutoDuty : IDalamudPlugin
     internal static   AutoDuty       Plugin { get; private set; } = null!;
     private static readonly HashSet<uint> ManualRotationTerritories = [952, 1292]; //
     private static readonly string DisableAbilitiesPathName = "(540) Accrue Enmity from Multiple Targets"; //
+    // RSR ToggleActions で敵視/被ダメ系アビリティを一括 ON/OFF する対象 ActionID (順序: Rampart, Reprisal, Fight or Flight, Shield Lob, Overpower)
+    private static readonly (uint Id, string Name)[] EnmityAbilities =
+    [
+        (7531, "Rampart"),
+        (7535, "Reprisal"),
+        (20,   "Fight or Flight"),
+        (24,   "Shield Lob"),
+        (41,   "Overpower"),
+    ];
     internal          bool           stopForCombat    = true;
     internal readonly DirectoryInfo  pathsDirectory   = null!;
     internal readonly FileInfo       assemblyFileInfo = null!;
@@ -316,7 +325,7 @@ public sealed class AutoDuty : IDalamudPlugin
             this.assemblyDirectoryInfo = this.assemblyFileInfo.Directory;
 
             this.Version = 
-                ((PluginInterface.IsDev     ? new Version(0,0,0, 320) :
+                ((PluginInterface.IsDev     ? new Version(0,0,1, 320) :
                   PluginInterface.IsTesting ? PluginInterface.Manifest.TestingAssemblyVersion ?? PluginInterface.Manifest.AssemblyVersion : PluginInterface.Manifest.AssemblyVersion)!).Revision;
 
             if (!this.configDirectory.Exists)
@@ -2022,16 +2031,7 @@ public sealed class AutoDuty : IDalamudPlugin
                 Chat.ExecuteCommand($"/rotation Settings HostileType 2"); //追加
                 ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeone2 false"); //追加
                 ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeoneType Auto"); //追加
-                if (Player.Object?.ClassJob.RowId == 39)
-                {
-                    //Chat.ExecuteCommand("/rotation ToggleActions ハルパー false"); //追加
-                }
-
-                Chat.ExecuteCommand("/rotation ToggleActions 7531 true");  // Rampart
-                Chat.ExecuteCommand("/rotation ToggleActions 7535 true");  // Reprisal
-                Chat.ExecuteCommand("/rotation ToggleActions 20 true"); // Fight or Flight
-                Chat.ExecuteCommand("/rotation ToggleActions 24 true");  // Shield Lob
-                Chat.ExecuteCommand("/rotation ToggleActions 41 true");  // Overpower
+                this.ToggleEnmityAbilities(true);
 
                 RSR_IPCSubscriber.RotationStop(); //追加
             }
@@ -2105,6 +2105,14 @@ public sealed class AutoDuty : IDalamudPlugin
         return isExactMatch || isContainsMatch;
     }							//end
 
+    // RSR の敵視/被ダメ系アビリティ (EnmityAbilities) を一括で有効/無効化する。
+    private void ToggleEnmityAbilities(bool enabled)
+    {
+        string flag = enabled ? "true" : "false";
+        foreach ((uint id, string _) in EnmityAbilities)
+            Chat.ExecuteCommand($"/rotation ToggleActions {id} {flag}");
+    }
+
     internal void SetRotationPluginSettings(bool on, bool ignoreConfig = false, bool ignoreTimer = false)
     {
         // Check if we need to disable/enable abilities for this path (do this BEFORE throttle check)	//start
@@ -2116,11 +2124,7 @@ public sealed class AutoDuty : IDalamudPlugin
         if (shouldManagePathAbilities)
         {
             // Always disable abilities on this path - regardless of on/off parameter
-            Chat.ExecuteCommand("/rotation ToggleActions 7531 false");  // Rampart
-            Chat.ExecuteCommand("/rotation ToggleActions 7535 false");  // Reprisal
-            Chat.ExecuteCommand("/rotation ToggleActions 20 false");    // Fight or Flight
-            Chat.ExecuteCommand("/rotation ToggleActions 24 false");    // Shield Lob
-            Chat.ExecuteCommand("/rotation ToggleActions 41 false");    // Overpower
+            this.ToggleEnmityAbilities(false);
             this.lastRotationSetTime = DateTime.Now;
             // Continue to RSR/BM initialization (don't return yet)
         }
@@ -2196,13 +2200,7 @@ public sealed class AutoDuty : IDalamudPlugin
 
                 // Disable specific abilities for this path (already checked in shouldManagePathAbilities)
                 if (shouldManagePathAbilities)
-                {
-                    Chat.ExecuteCommand("/rotation ToggleActions 7531 false");  // Rampart
-                    Chat.ExecuteCommand("/rotation ToggleActions 7535 false");  // Reprisal
-                    Chat.ExecuteCommand("/rotation ToggleActions 20 false");    // Fight or Flight
-                    Chat.ExecuteCommand("/rotation ToggleActions 24 false");    // Shield Lob
-                    Chat.ExecuteCommand("/rotation ToggleActions 41 false");    // Overpower
-                }
+                    this.ToggleEnmityAbilities(false);
 
                 if (/*active &&*/ !AutoDuty.Configuration.RSR_Auto)
                 {
@@ -2260,32 +2258,9 @@ public sealed class AutoDuty : IDalamudPlugin
                     Chat.ExecuteCommand($"/bmrai maxdistancetarget {AutoDuty.Configuration.MaxDistanceToTargetFloat}"); //追加
                     Chat.ExecuteCommand($"/bmrai positional {AutoDuty.Configuration.PositionalEnum}"); //追加
                     Chat.ExecuteCommand($"/bmr cfg ZoneModuleConfig EnableQuestBattles true"); //追加
-                    if (AutoDuty.Configuration.BMR_ManualTarget)
-                    {
-                        Chat.ExecuteCommand($"/bmr cfg AIConfig ManualTarget true"); //追加
-                    }
-                    else
-                    {
-                        Chat.ExecuteCommand($"/bmr cfg AIConfig ManualTarget false"); //追加
-                    }
-
-                    if (AutoDuty.Configuration.BMR_FollowTarget)
-                    {
-                        Chat.ExecuteCommand($"/bmr cfg AIConfig FollowTarget true"); //追加
-                    }
-                    else
-                    {
-                        Chat.ExecuteCommand($"/bmr cfg AIConfig FollowTarget false"); //追加
-                    }
-
-                    if (AutoDuty.Configuration.BMR_FollowOutOfCombat)
-                    {
-                        Chat.ExecuteCommand($"/bmr cfg AIConfig FollowOutOfCombat true"); //追加
-                    }
-                    else
-                    {
-                        Chat.ExecuteCommand($"/bmr cfg AIConfig FollowOutOfCombat false"); //追加
-                    }
+                    Chat.ExecuteCommand($"/bmr cfg AIConfig ManualTarget {(AutoDuty.Configuration.BMR_ManualTarget ? "true" : "false")}");
+                    Chat.ExecuteCommand($"/bmr cfg AIConfig FollowTarget {(AutoDuty.Configuration.BMR_FollowTarget ? "true" : "false")}");
+                    Chat.ExecuteCommand($"/bmr cfg AIConfig FollowOutOfCombat {(AutoDuty.Configuration.BMR_FollowOutOfCombat ? "true" : "false")}");
                 }
 
                 if (active || IPCSubscriber_Common.IsReady("BossMod") || IPCSubscriber_Common.IsReady("BossModReborn"))
@@ -2639,16 +2614,7 @@ public sealed class AutoDuty : IDalamudPlugin
             Chat.ExecuteCommand($"/rotation Settings HostileType 2"); //追加
             ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeone2 false"); //追加
             ////Chat.ExecuteCommand("/rotation Settings StartOnAttackedBySomeoneType Auto"); //追加
-            if (Player.Object?.ClassJob.RowId == 39)
-            {
-                //Chat.ExecuteCommand("/rotation ToggleActions ハルパー false"); //追加
-            }
-
-            Chat.ExecuteCommand("/rotation ToggleActions 7531 true");  // Rampart
-            Chat.ExecuteCommand("/rotation ToggleActions 7535 true");  // Reprisal
-            Chat.ExecuteCommand("/rotation ToggleActions 20 true"); // Fight or Flight
-            Chat.ExecuteCommand("/rotation ToggleActions 24 true");  // Shield Lob
-            Chat.ExecuteCommand("/rotation ToggleActions 41 true");  // Overpower
+            this.ToggleEnmityAbilities(true);
 
             RSR_IPCSubscriber.RotationStop(); //追加
         }
