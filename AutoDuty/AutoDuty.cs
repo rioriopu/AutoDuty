@@ -326,7 +326,7 @@ public sealed class AutoDuty : IDalamudPlugin
             this.assemblyDirectoryInfo = this.assemblyFileInfo.Directory;
 
             this.Version = 
-                ((PluginInterface.IsDev     ? new Version(0,0,6, 320) :
+                ((PluginInterface.IsDev     ? new Version(0,0,7, 320) :
                   PluginInterface.IsTesting ? PluginInterface.Manifest.TestingAssemblyVersion ?? PluginInterface.Manifest.AssemblyVersion : PluginInterface.Manifest.AssemblyVersion)!).Revision;
 
             if (!this.configDirectory.Exists)
@@ -1867,15 +1867,19 @@ public sealed class AutoDuty : IDalamudPlugin
                     if (!VNavmesh_IPCSubscriber.SimpleMove_PathfindInProgress && VNavmesh_IPCSubscriber.Path_IsRunning)
                         VNavmesh_IPCSubscriber.Path_Stop();
 
-                    if (enemyCount > 2)
+                    // 毎フレームの SetRange 連打を抑止 (ログ汚染・無駄な IPC 呼び出し対策)。値の再適用は1秒間隔で十分。
+                    if (EzThrottler.Throttle("BossModSetRange", 1000))
                     {
-                        Svc.Log.Debug($"Changing MaxDistanceToTarget to {Configuration.MaxDistanceToTargetAoEFloat}, because enemy count = {enemyCount}");
-                        BossMod_IPCSubscriber.SetRange(Configuration.MaxDistanceToTargetAoEFloat);
-                    }
-                    else
-                    {
-                        Svc.Log.Debug($"Changing MaxDistanceToTarget to {Configuration.MaxDistanceToTargetFloat}, because enemy count = {enemyCount}");
-                        BossMod_IPCSubscriber.SetRange(Configuration.MaxDistanceToTargetFloat);
+                        if (enemyCount > 2)
+                        {
+                            Svc.Log.Debug($"Changing MaxDistanceToTarget to {Configuration.MaxDistanceToTargetAoEFloat}, because enemy count = {enemyCount}");
+                            BossMod_IPCSubscriber.SetRange(Configuration.MaxDistanceToTargetAoEFloat);
+                        }
+                        else
+                        {
+                            Svc.Log.Debug($"Changing MaxDistanceToTarget to {Configuration.MaxDistanceToTargetFloat}, because enemy count = {enemyCount}");
+                            BossMod_IPCSubscriber.SetRange(Configuration.MaxDistanceToTargetFloat);
+                        }
                     }
                 }
             }
@@ -2284,9 +2288,11 @@ public sealed class AutoDuty : IDalamudPlugin
                         }
                         else if (!AutoDuty.Configuration.PassiveLB)
                         {
-                            // 自動戦闘では Passive ではなく AutoDuty プリセットを使用する
-                            BossMod_IPCSubscriber.SetPreset("AutoDuty", Resources.AutoDutyPreset);
-                            Chat.ExecuteCommand($"/vbm ar activate AutoDuty");
+                            // 外部ローテーション(Wrath/RSR)併用時は Passive(位置取りのみ)を使用。
+                            // 能動プリセットだと BossMod AI が戦闘移動を行い、特に後方ヒーラーが
+                            // 遠くの交戦中の敵へ寄って誤移動するため。
+                            BossMod_IPCSubscriber.SetPreset("AutoDuty Passive", Resources.AutoDutyPassivePreset);
+                            Chat.ExecuteCommand($"/vbm ar activate AutoDuty Passive");
                             Chat.ExecuteCommand($"/vbm ai enabled on");
                         }
                         else if (AutoDuty.Configuration.PassiveLB)
@@ -2307,10 +2313,10 @@ public sealed class AutoDuty : IDalamudPlugin
                         }
                         else if (!AutoDuty.Configuration.PassiveLB)
                         {
-                            // 自動戦闘では Passive ではなく AutoDuty プリセットを使用する
-                            BossMod_IPCSubscriber.SetPreset("AutoDuty", Resources.AutoDutyPassivePreset);
-                            Chat.ExecuteCommand("/bmrai setpresetname AutoDuty");
-                            Chat.ExecuteCommand("/bmr ar set AutoDuty");
+                            // 外部ローテーション(Wrath/RSR)併用時は Passive(位置取りのみ)を使用。
+                            BossMod_IPCSubscriber.SetPreset("AutoDuty Passive", Resources.AutoDutyPassivePreset);
+                            Chat.ExecuteCommand("/bmrai setpresetname AutoDuty Passive");
+                            Chat.ExecuteCommand("/bmr ar set AutoDuty Passive");
                         }
                         else if (AutoDuty.Configuration.PassiveLB)
                         {
