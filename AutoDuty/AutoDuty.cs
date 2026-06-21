@@ -326,7 +326,7 @@ public sealed class AutoDuty : IDalamudPlugin
             this.assemblyDirectoryInfo = this.assemblyFileInfo.Directory;
 
             this.Version = 
-                ((PluginInterface.IsDev     ? new Version(0,0,4, 320) :
+                ((PluginInterface.IsDev     ? new Version(0,0,5, 320) :
                   PluginInterface.IsTesting ? PluginInterface.Manifest.TestingAssemblyVersion ?? PluginInterface.Manifest.AssemblyVersion : PluginInterface.Manifest.AssemblyVersion)!).Revision;
 
             if (!this.configDirectory.Exists)
@@ -1049,6 +1049,11 @@ public sealed class AutoDuty : IDalamudPlugin
         if(InDungeon)
             Configuration.AutoDutyModeEnum = AutoDutyMode.Looping;
 
+        // 「パーティレベリング」種別はレベリング前提。LevelingModeEnum は永続化されないため、
+        // 設定リロード後などで未設定なら開始時に Regular_Party を補完する。
+        if (Configuration.DutyModeEnum == DutyMode.RegularLeveling && this.LevelingModeEnum == LevelingMode.None)
+            this.LevelingModeEnum = LevelingMode.Regular_Party;
+
         Svc.Log.Debug($"Run: territoryType={territoryType} loops={loops} bareMode={bareMode}");
 
         if (territoryType > 0 && !this.LevelingEnabled)
@@ -1546,7 +1551,7 @@ public sealed class AutoDuty : IDalamudPlugin
         {
             this.variantManager.RegisterVariantDuty(content);
         }
-        else if (Configuration.DutyModeEnum.EqualsAny(DutyMode.Regular, DutyMode.Trial, DutyMode.Raid, DutyMode.Support, DutyMode.Trust, DutyMode.NoviceHall))
+        else if (Configuration.DutyModeEnum.EqualsAny(DutyMode.Regular, DutyMode.Trial, DutyMode.Raid, DutyMode.Support, DutyMode.Trust, DutyMode.NoviceHall, DutyMode.RegularLeveling))
         {
             this.taskManager.Enqueue(() => QueueHelper.Invoke(content, Configuration.DutyModeEnum), "Queue-Invoke");
             this.taskManager.EnqueueDelay(50);

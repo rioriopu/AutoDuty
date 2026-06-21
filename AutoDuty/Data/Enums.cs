@@ -248,7 +248,8 @@
             Trial      = 1 << 4,
             Raid       = 1 << 5,
             Variant    = 1 << 6,
-            NoviceHall = 1 << 7
+            NoviceHall = 1 << 7,
+            RegularLeveling = 1 << 8
         }
 
         public enum LevelingMode : int

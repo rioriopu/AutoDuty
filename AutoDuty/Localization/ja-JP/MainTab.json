@@ -57,7 +57,8 @@
       "Trial": "討伐・討滅戦",
       "Raid": "レイド",
       "Variant": "ヴァリアントダンジョン",
-      "NoviceHall": "初心者の館"
+      "NoviceHall": "初心者の館",
+      "RegularLeveling": "パーティレベリング"
     },
     "LevelingModes": {
       "None": "なし",

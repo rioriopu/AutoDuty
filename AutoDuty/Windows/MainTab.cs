@@ -300,9 +300,9 @@ namespace AutoDuty.Windows
                                 MainWindow.ShowPopup(Loc.Get("MainTab.Error"), Loc.Get("MainTab.ErrorSelectVersion"));
                             else if (Svc.Party.PartyId > 0 && AutoDuty.Configuration.DutyModeEnum is DutyMode.Support or DutyMode.Squadron or DutyMode.Trust)
                                 MainWindow.ShowPopup(Loc.Get("MainTab.Error"), Loc.Get("MainTab.ErrorNotInParty"));
-                            else if (AutoDuty.Configuration is { DutyModeEnum: DutyMode.Regular, OverridePartyValidation: false } && synced && UniversalParty.Length < 4)
+                            else if (AutoDuty.Configuration is { DutyModeEnum: DutyMode.Regular or DutyMode.RegularLeveling, OverridePartyValidation: false } && synced && UniversalParty.Length < 4)
                                 MainWindow.ShowPopup(Loc.Get("MainTab.Error"), Loc.Get("MainTab.ErrorGroupOf4"));
-                            else if (AutoDuty.Configuration is { DutyModeEnum: DutyMode.Regular, OverridePartyValidation: false } && synced && !ObjectHelper.PartyValidation())
+                            else if (AutoDuty.Configuration is { DutyModeEnum: DutyMode.Regular or DutyMode.RegularLeveling, OverridePartyValidation: false } && synced && !ObjectHelper.PartyValidation())
                                 MainWindow.ShowPopup(Loc.Get("MainTab.Error"), Loc.Get("MainTab.ErrorPartyMakeup"));
                             else if (ContentPathsManager.DictionaryPaths.ContainsKey(Plugin.CurrentTerritoryContent?.TerritoryType ?? 0))
                                 Plugin.Run();
@@ -343,6 +343,14 @@ namespace AutoDuty.Windows
                                     if (ImGui.Selectable(Loc.Get($"MainTab.DutyModes.{mode}"), AutoDuty.Configuration.DutyModeEnum == mode))
                                     {
                                         AutoDuty.Configuration.DutyModeEnum = mode;
+
+                                        // 「パーティレベリング」種別はレベリング前提なので自動で Regular_Party を有効化。
+                                        // 他種別へ切り替えたときはパーティレベリングを解除する。
+                                        if (mode == DutyMode.RegularLeveling)
+                                            Plugin.LevelingModeEnum = LevelingMode.Regular_Party;
+                                        else if (Plugin.LevelingModeEnum == LevelingMode.Regular_Party)
+                                            Plugin.LevelingModeEnum = LevelingMode.None;
+
                                         Configuration.Save();
                                     }
 
@@ -525,7 +533,7 @@ namespace AutoDuty.Windows
                     {
                         ImGuiEx.TextWrapped(new Vector4(255, 1, 0, 1), Loc.Get("MainTab.SwitchCombatJob"));
                     }
-                    else if (Player.Job == Job.BLU && AutoDuty.Configuration.DutyModeEnum is not (DutyMode.Regular or DutyMode.Trial or DutyMode.Raid))
+                    else if (Player.Job == Job.BLU && AutoDuty.Configuration.DutyModeEnum is not (DutyMode.Regular or DutyMode.Trial or DutyMode.Raid or DutyMode.RegularLeveling))
                     {
                         ImGuiEx.TextWrapped(new Vector4(0, 1, 1, 1), Loc.Get("MainTab.BlueMageRestriction"));
                     }
@@ -552,7 +560,8 @@ namespace AutoDuty.Windows
                                         else
                                         {
                                             ImGuiEx.TextWrapped(new Vector4(0, 1, 0, 1), Loc.Get("MainTab.LevelingModeStatus", Player.Level.ToString(), ilvl.ToString()));
-                                            foreach ((Content Value, int Index) item in LevelingHelper.LevelingDuties.Select((value, index) => (Value: value, Index: index)))
+                                            Content[] previewDuties = Plugin.PartyLevelingEnabled ? LevelingHelper.LevelingDutiesRegularParty : LevelingHelper.LevelingDuties;
+                                            foreach ((Content Value, int Index) item in previewDuties.Select((value, index) => (Value: value, Index: index)))
                                             {
                                                 if (AutoDuty.Configuration.DutyModeEnum == DutyMode.Trust && !item.Value.DutyModes.HasFlag(DutyMode.Trust))
                                                     continue;

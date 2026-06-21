@@ -57,7 +57,8 @@
       "Trial": "Trial",
       "Raid": "Raid",
       "Variant": "Variant",
-      "NoviceHall": "Hall of the Novice"
+      "NoviceHall": "Hall of the Novice",
+      "RegularLeveling": "Party Leveling"
     },
     "LevelingModes": {
       "None": "None",

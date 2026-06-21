@@ -316,6 +316,7 @@ namespace AutoDuty.Helpers
                 case DutyMode.Regular:
                 case DutyMode.Trial:
                 case DutyMode.Raid:
+                case DutyMode.RegularLeveling: // パーティレベリングは通常ダンジョンと同じ Duty Finder 経路で突入
                     try
                     {
                         this.QueueRegular();
