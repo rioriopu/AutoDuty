@@ -125,9 +125,27 @@ namespace AutoDuty.Helpers
 
             if (Plugin.indexer != -1)
             {
-                ContentPathsManager.ContentPathContainer container    = ContentPathsManager.DictionaryPaths[Plugin.currentTerritoryType];
-                ContentPathsManager.DutyPath             dutyPath     = container.Paths[Plugin.currentPath];
-                bool                                     revivalFound = dutyPath.RevivalFound;
+                // 防御ガード: territory/currentPath/indexer が未設定・範囲外の場合は安全に 0 を返す。
+                // 特に MultiBox クライアントは PATH_STEPS で Actions のみ設定し currentPath は -1 のままのため、
+                // 蘇生時にここで ArgumentOutOfRangeException / KeyNotFoundException が発生していた。
+                if (!ContentPathsManager.DictionaryPaths.TryGetValue(Plugin.currentTerritoryType, out ContentPathsManager.ContentPathContainer? container))
+                {
+                    Svc.Log.Warning($"DeathHelper.FindWaypoint: territory {Plugin.currentTerritoryType} のパスが見つかりません");
+                    return 0;
+                }
+                if (Plugin.currentPath < 0 || Plugin.currentPath >= container.Paths.Count)
+                {
+                    Svc.Log.Warning($"DeathHelper.FindWaypoint: currentPath {Plugin.currentPath} が範囲外です (Paths={container.Paths.Count})");
+                    return 0;
+                }
+                if (Plugin.indexer < 0 || Plugin.indexer >= Plugin.Actions.Count)
+                {
+                    Svc.Log.Warning($"DeathHelper.FindWaypoint: indexer {Plugin.indexer} が範囲外です (Actions={Plugin.Actions.Count})");
+                    return 0;
+                }
+
+                ContentPathsManager.DutyPath dutyPath     = container.Paths[Plugin.currentPath];
+                bool                         revivalFound = dutyPath.RevivalFound;
 
                 bool isBoss = Plugin.Actions[Plugin.indexer].Name.Equals("Boss");
                 if (!revivalFound)

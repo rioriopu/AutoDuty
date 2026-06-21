@@ -326,7 +326,7 @@ public sealed class AutoDuty : IDalamudPlugin
             this.assemblyDirectoryInfo = this.assemblyFileInfo.Directory;
 
             this.Version = 
-                ((PluginInterface.IsDev     ? new Version(0,0,5, 320) :
+                ((PluginInterface.IsDev     ? new Version(0,0,6, 320) :
                   PluginInterface.IsTesting ? PluginInterface.Manifest.TestingAssemblyVersion ?? PluginInterface.Manifest.AssemblyVersion : PluginInterface.Manifest.AssemblyVersion)!).Revision;
 
             if (!this.configDirectory.Exists)
@@ -2284,8 +2284,9 @@ public sealed class AutoDuty : IDalamudPlugin
                         }
                         else if (!AutoDuty.Configuration.PassiveLB)
                         {
-                            BossMod_IPCSubscriber.SetPreset("AutoDuty Passive", Resources.AutoDutyPassivePreset);
-                            Chat.ExecuteCommand($"/vbm ar activate AutoDuty Passive");
+                            // 自動戦闘では Passive ではなく AutoDuty プリセットを使用する
+                            BossMod_IPCSubscriber.SetPreset("AutoDuty", Resources.AutoDutyPreset);
+                            Chat.ExecuteCommand($"/vbm ar activate AutoDuty");
                             Chat.ExecuteCommand($"/vbm ai enabled on");
                         }
                         else if (AutoDuty.Configuration.PassiveLB)
@@ -2306,9 +2307,10 @@ public sealed class AutoDuty : IDalamudPlugin
                         }
                         else if (!AutoDuty.Configuration.PassiveLB)
                         {
-                            BossMod_IPCSubscriber.SetPreset("AutoDuty Passive", Resources.AutoDutyPassivePreset);
-                            Chat.ExecuteCommand("/bmrai setpresetname AutoDuty Passive");
-                            Chat.ExecuteCommand("/bmr ar set AutoDuty Passive");
+                            // 自動戦闘では Passive ではなく AutoDuty プリセットを使用する
+                            BossMod_IPCSubscriber.SetPreset("AutoDuty", Resources.AutoDutyPassivePreset);
+                            Chat.ExecuteCommand("/bmrai setpresetname AutoDuty");
+                            Chat.ExecuteCommand("/bmr ar set AutoDuty");
                         }
                         else if (AutoDuty.Configuration.PassiveLB)
                         {
