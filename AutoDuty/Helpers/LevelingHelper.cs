@@ -97,6 +97,13 @@ namespace AutoDuty.Helpers
             CombatRole combatRole = Player.Job.GetCombatRole();
 
             bool trust = mode.IsTrustLeveling();
+            bool party = mode == LevelingMode.Regular_Party;
+            if (party)
+            {
+                // パーティレベリング: 最も低いメンバーのレベルに合わせる
+                lvl = PartyHelper.GetLowestPartyLevel();
+                Svc.Log.Debug($"Leveling Mode (Party): パーティ最低レベル {lvl} に合わせて選定します");
+            }
             if (trust)
             {
                 if (TrustHelper.Members.All(tm => !tm.Value.LevelIsSet))
@@ -158,8 +165,11 @@ namespace AutoDuty.Helpers
                 return null;
             }
 
-            LevelingDuties.Each(x => Svc.Log.Debug($"Leveling Mode: Duties: {x.Name} CanRun: {x.CanRun(lvl)}{(trust ? $"CanTrustRun : {x.CanTrustRun()}" : "")}"));
-            curContent = LevelingDuties.LastOrDefault(x => x.CanRun(lvl, trust ? DutyMode.Trust : DutyMode.None));
+            // trust=Trust / party=Regular(IL要件チェック込み) / それ以外=None(=Configuration.DutyModeEnum)。
+            // CanRun は ItemLevelRequired も判定するため、IL 不足で入れない場合は LastOrDefault が自動的に一つ下のダンジョンを返す。
+            DutyMode runMode = trust ? DutyMode.Trust : party ? DutyMode.Regular : DutyMode.None;
+            LevelingDuties.Each(x => Svc.Log.Debug($"Leveling Mode: Duties: {x.Name} CanRun: {x.CanRun(lvl, runMode)}{(trust ? $"CanTrustRun : {x.CanTrustRun()}" : "")}"));
+            curContent = LevelingDuties.LastOrDefault(x => x.CanRun(lvl, runMode));
 
             Svc.Log.Debug($"Leveling Mode: We found {curContent?.Name ?? "no duty"} to run");
 

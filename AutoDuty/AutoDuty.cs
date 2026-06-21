@@ -105,6 +105,7 @@ public sealed class AutoDuty : IDalamudPlugin
 
     internal bool SupportLevelingEnabled => this.LevelingModeEnum == LevelingMode.Support;
     internal bool TrustLevelingEnabled   => this.LevelingModeEnum.IsTrustLeveling();
+    internal bool PartyLevelingEnabled   => this.LevelingModeEnum == LevelingMode.Regular_Party;
     internal bool LevelingEnabled        => this.LevelingModeEnum != LevelingMode.None;
 
     internal static   string         Name   => "AutoDuty";
@@ -325,7 +326,7 @@ public sealed class AutoDuty : IDalamudPlugin
             this.assemblyDirectoryInfo = this.assemblyFileInfo.Directory;
 
             this.Version = 
-                ((PluginInterface.IsDev     ? new Version(0,0,1, 320) :
+                ((PluginInterface.IsDev     ? new Version(0,0,2, 320) :
                   PluginInterface.IsTesting ? PluginInterface.Manifest.TestingAssemblyVersion ?? PluginInterface.Manifest.AssemblyVersion : PluginInterface.Manifest.AssemblyVersion)!).Revision;
 
             if (!this.configDirectory.Exists)

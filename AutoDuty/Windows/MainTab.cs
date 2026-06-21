@@ -374,7 +374,12 @@ namespace AutoDuty.Windows
                                                 Configuration.Save();
                                         }
 
-                                        LevelingMode autoLevelMode = (AutoDuty.Configuration.DutyModeEnum == DutyMode.Support ? LevelingMode.Support : LevelingMode.Trust_Group);
+                                        LevelingMode autoLevelMode = AutoDuty.Configuration.DutyModeEnum switch
+                                        {
+                                            DutyMode.Support => LevelingMode.Support,
+                                            DutyMode.Regular => LevelingMode.Regular_Party,
+                                            _                => LevelingMode.Trust_Group
+                                        };
                                         if (ImGui.Selectable(Loc.Get("MainTab.LevelingModes."+autoLevelMode)+"##LevelingModeComboAuto", Plugin.LevelingModeEnum == autoLevelMode))
                                         {
                                             Plugin.LevelingModeEnum = autoLevelMode;

@@ -63,7 +63,8 @@
       "None": "なし",
       "Support": "自動",
       "Trust_Group": "フェイス グループ",
-      "Trust_Solo": "フェイス ソロ"
+      "Trust_Solo": "フェイス ソロ",
+      "Regular_Party": "パーティ (通常)"
     }
   }
 }

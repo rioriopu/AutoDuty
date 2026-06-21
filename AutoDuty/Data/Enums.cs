@@ -256,7 +256,8 @@
             None = 0,
             Support = 1,
             Trust_Group = 2,
-            Trust_Solo = 3
+            Trust_Solo = 3,
+            Regular_Party = 4
         }
 
         [Flags]

@@ -47,6 +47,24 @@
             return party;
         }
 
+        /// <summary>
+        ///     パーティ(自分含む)の最低レベルを返す。メンバーが取得できない場合は自分のレベル。
+        ///     パーティレベリングで「最も低いメンバーに合わせる」目標レベルの算出に使用する。
+        /// </summary>
+        public static short GetLowestPartyLevel()
+        {
+            short lowest = PlayerHelper.GetCurrentLevelFromSheet();
+
+            foreach (IBattleChara member in GetPartyMembers())
+            {
+                int memberLevel = member.Level;
+                if (memberLevel > 0 && memberLevel < lowest)
+                    lowest = (short)memberLevel;
+            }
+
+            return lowest;
+        }
+
 
 
         private static DateTime partyCombatCheckTime = DateTime.Now;
