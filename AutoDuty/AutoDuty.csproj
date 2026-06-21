@@ -78,4 +78,22 @@
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
   </ItemGroup>
+
+  <!-- [Estell fork] Release ビルド時に C:\DevPlugins\AutoDuty\ へ自動デプロイする。
+       パスは /p:DevPluginsDir=... で上書き可能。/p:EnableDevPluginsDeploy=false で無効化。 -->
+  <PropertyGroup>
+    <DevPluginsDir Condition="'$(DevPluginsDir)' == ''">C:\DevPlugins\AutoDuty</DevPluginsDir>
+    <EnableDevPluginsDeploy Condition="'$(EnableDevPluginsDeploy)' == ''">true</EnableDevPluginsDeploy>
+  </PropertyGroup>
+  <Target Name="DeployToDevPlugins" AfterTargets="Build"
+          Condition="'$(Configuration)' == 'Release' And '$(EnableDevPluginsDeploy)' == 'true'">
+    <ItemGroup>
+      <_DeployFiles Include="$(OutputPath)*.dll;$(OutputPath)*.json;$(OutputPath)*.pdb;$(OutputPath)*.xml" />
+      <_DeployLocFiles Include="$(OutputPath)Localization\**\*.json" />
+    </ItemGroup>
+    <MakeDir Directories="$(DevPluginsDir)" />
+    <Copy SourceFiles="@(_DeployFiles)" DestinationFolder="$(DevPluginsDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_DeployLocFiles)" DestinationFolder="$(DevPluginsDir)\Localization\%(RecursiveDir)" SkipUnchangedFiles="true" />
+    <Message Importance="high" Text="[AutoDuty] Deployed to $(DevPluginsDir)" />
+  </Target>
 </Project>
